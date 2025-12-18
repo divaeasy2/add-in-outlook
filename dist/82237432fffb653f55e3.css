@@ -1,0 +1,154 @@
+/* Base reset */
+html, body {
+    margin: 0;
+    padding: 0;
+    font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    background-color: #f4f4f4;
+    width: 98%;
+    height: 100%;
+    box-sizing: border-box;
+}
+
+/* Header */
+header.ms-welcome__header {
+    display: flex;
+    width: 90.5%;
+    align-items: center;
+    padding: 15px 20px;
+    background-color: orange;
+    color: #fff;
+    border-bottom: 1px solid #ccc;
+}
+
+header.ms-welcome__header img {
+    border-radius: 50%;
+    margin-right: 15px;
+}
+
+header.ms-welcome__header h1 {
+    font-size: 24px;
+    font-weight: 600;
+}
+
+/* Main welcome section */
+.ms-welcome__main {
+    padding: 20px;
+}
+
+/* Container for testing */
+#container2 {
+    background-color: #fff;
+    padding: 20px;
+    margin: 20px auto;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    max-width: 600px;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+}
+
+/* Button */
+#btnTest {
+    background-color: orange;
+    color: #fff;
+    border: none;
+    padding: 12px 20px;
+    font-size: 16px;
+    font-weight: 600;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+    margin-bottom: 15px;
+}
+
+#btnTest:hover {
+    background-color: #005a9e;
+}
+
+/* Result area */
+#result {
+    display: none;
+    background-color: #f1f1f1;
+    padding: 15px;
+    border-radius: 5px;
+    font-size: 14px;
+    line-height: 1.5;
+    color: #333;
+    white-space: pre-wrap;
+    overflow-x: auto;
+}
+
+#resultJson {
+    display: none;
+    background-color: #f1f1f1;
+    padding: 15px;
+    border-radius: 5px;
+    font-size: 14px;
+    line-height: 1.5;
+    color: #333;
+    white-space: pre-wrap;
+    overflow-x: auto;
+}
+
+#body {
+    display: none;
+    background-color: #f1f1f1;
+    padding: 15px;
+    border-radius: 5px;
+    font-size: 14px;
+    line-height: 1.5;
+    color: #333;
+    white-space: pre-wrap;
+    overflow-x: auto;
+}
+
+/* App body section */
+#app-body {
+    max-width: 650px;
+    margin: 20px auto;
+    background-color: #fff;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+.ms-ListItem i.ms-Icon {
+    margin-right: 10px;
+    color: orange;
+}
+
+/* Run button */
+#run {
+    background-color: orange;
+    color: #fff;
+    border: none;
+    padding: 12px 25px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 16px;
+    font-weight: 600;
+    text-align: center;
+    display: inline-block;
+    margin-top: 15px;
+    transition: background-color 0.2s ease;
+}
+
+#run:hover {
+    background-color: #005a9e;
+}
+
+/* Responsive */
+@media (max-width: 700px) {
+    #container2, #app-body {
+        width: 90%;
+    }
+
+    header.ms-welcome__header h1 {
+        font-size: 20px;
+    }
+
+    #btnTest, #run {
+        font-size: 14px;
+    }
+}
