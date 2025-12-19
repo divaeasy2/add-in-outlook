@@ -12,8 +12,8 @@
   <DisplayName DefaultValue="Diva Add-in"/>
   <Description DefaultValue="Diva Outlook Add-in"/>
 
-  <IconUrl DefaultValue="https://maisondelarose.org/dist/assets/icon-64.png"/>
-  <HighResolutionIconUrl DefaultValue="https://maisondelarose.org/dist/assets/icon-128.png"/>
+  <IconUrl DefaultValue="https://maisondelarose.org/dist/assets/logo-filled.png"/>
+  <HighResolutionIconUrl DefaultValue="https://maisondelarose.org/dist/assets/logo-filled.png"/>
 
   <Hosts>
     <Host Name="Mailbox"/>
@@ -84,9 +84,9 @@
 
     <Resources>
       <bt:Images>
-        <bt:Image id="Icon.16" DefaultValue="https://maisondelarose.org/dist/assets/icon-16.png"/>
-        <bt:Image id="Icon.32" DefaultValue="https://maisondelarose.org/dist/assets/icon-32.png"/>
-        <bt:Image id="Icon.80" DefaultValue="https://maisondelarose.org/dist/assets/icon-80.png"/>
+        <bt:Image id="Icon.16" DefaultValue="https://maisondelarose.org/dist/assets/logo-filled.png"/>
+        <bt:Image id="Icon.32" DefaultValue="https://maisondelarose.org/dist/assets/logo-filled.png"/>
+        <bt:Image id="Icon.80" DefaultValue="https://maisondelarose.org/dist/assets/logo-filled.png"/>
       </bt:Images>
 
       <bt:Urls>
