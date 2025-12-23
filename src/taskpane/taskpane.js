@@ -69,7 +69,18 @@
 
 /* global Office */
 
+/* ======================
+   GLOBAL STATE
+====================== */
+
+let cachedPayload = null;
+
+/* ======================
+   OFFICE READY
+====================== */
+
 Office.onReady(() => {
+  // User info
   document.getElementById("user").innerText =
     Office.context.mailbox.userProfile.displayName;
 
@@ -82,7 +93,12 @@ Office.onReady(() => {
   const appBody = document.getElementById("app-body");
   if (appBody) appBody.style.display = "block";
 
-  document.getElementById("btnTest").onclick = testEmail;
+  document.getElementById("btnDetails").onclick = displayEmailDetails;
+  document.getElementById("btnSav").onclick = () => sendToApi("1");
+  document.getElementById("btnComm").onclick = () => sendToApi("2");
+
+  document.getElementById("btnSav").disabled = true;
+  document.getElementById("btnComm").disabled = true;
 });
 
 /* ======================
@@ -100,70 +116,89 @@ function showApiResponse(text) {
 }
 
 /* ======================
-   MAIN
+   DISPLAY EMAIL (NO FETCH)
 ====================== */
 
-function testEmail() {
+function displayEmailDetails() {
+
+  const body = document.getElementById("body");
+  if (body) body.style.display = "block";
+
+  const myresult = document.getElementById("result");
+  if (myresult) myresult.style.display = "block";
+
+  const resultJson = document.getElementById("resultJson");
+  if (resultJson) resultJson.style.display = "block";
+
   const item = Office.context.mailbox.item;
+
   const subject = item.subject || "";
   const from = item.from?.emailAddress || "";
-  const senderName = item.sender?.displayName || "";
   const user = Office.context.mailbox.userProfile.emailAddress;
-  var type = "1"
-
-  // const getCompanyName = () => {
-  //   if (!from.includes("@")) return "";
-  //   return from.split("@")[1].split(".")[0];
-  // };
 
   item.body.getAsync(Office.CoercionType.Text, (result) => {
-  if (result.status !== Office.AsyncResultStatus.Succeeded) {
-    showStatus("❌ Impossible de lire l’email", true);
+    if (result.status !== Office.AsyncResultStatus.Succeeded) {
+      showStatus("❌ Impossible de lire l’email", true);
+      return;
+    }
+
+    body.innerText = result.value;
+    myresult.innerText =
+      `Subject: ${subject}\nFrom: ${from}`;
+
+    currentPayload = {
+      evenement: {
+        type: "",
+        utilisateur: user,
+        tiers: from,
+        lib: subject,
+        pj: ""
+      }
+    };
+
+    resultJson.innerText =
+      JSON.stringify(currentPayload, null, 2);
+
+    document.getElementById("btnSav").disabled = false;
+    document.getElementById("btnComm").disabled = false;
+
+    showStatus("📩 Détails affichés");
+  });
+}
+
+
+/* ======================
+   SEND TO API (SAV / COMM)
+====================== */
+
+function sendToApi(type) {
+  if (!currentPayload) {
+    showStatus("❌ Aucun email chargé", true);
     return;
   }
 
-  document.getElementById("body").innerText = result.value;
-  document.getElementById("result").innerText =
-    `Subject: ${subject}\nFrom: ${from}`;
-
-  const payload = {
-    evenement: {
-      type: type,
-      utilisateur: user,
-      tiers: from,
-      lib: subject,
-      pj: ""
-    }
-  };
+  currentPayload.evenement.type = type;
 
   document.getElementById("resultJson").innerText =
-    JSON.stringify(payload, null, 2);
+    JSON.stringify(currentPayload, null, 2);
 
-  showStatus("📩 Email affiché avec succès");
+  showStatus("⏳ Envoi vers l’API...");
 
-  setTimeout(() => {
-    showStatus("⏳ Envoi vers l’API...");
-    callApiSafe(payload);
-  }, 500);
-});
+  callApiSafe(currentPayload);
 }
 
 /* ======================
-   SAFE FETCH
+   SAFE FETCH (PROXY)
 ====================== */
 
 function callApiSafe(payload) {
-  fetch(
-    "https://maisondelarose.org/proxy/proxy.php",
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    }
-  )
+  fetch("https://maisondelarose.org/proxy/proxy.php", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  })
     .then(async (res) => {
       const text = await res.text();
-
       showApiResponse(text);
 
       if (!res.ok) {
@@ -178,13 +213,12 @@ function callApiSafe(payload) {
           JSON.stringify(parsed, null, 2);
 
         if (!parsed.json || !parsed.json.result) {
-          showStatus("❌ Structure API غير متوقعة", true);
+          showStatus("❌ Structure API inattendue", true);
           return;
         }
 
         const resultStr = parsed.json.result;
 
-        // 🔎 EXTRACTION SAFE
         const codeMatch = resultStr.match(/"resultcode"\s*:\s*"(\d+)"/);
         const evtMatch = resultStr.match(/"EvtNo"\s*:\s*"([^"]+)"/);
         const errMatch = resultStr.match(/"errormessage"\s*:\s*"([^"]*)"/);
@@ -196,13 +230,19 @@ function callApiSafe(payload) {
         if (resultcode === "0") {
           showStatus(`✅ Succès — EVTCODE : ${evtNo}`);
         } else {
-          showStatus(`❌ Erreur API : ${errorMsg || "Erreur inconnue"}`, true);
+          showStatus(
+            `❌ Erreur API : ${errorMsg || "Erreur inconnue"}`,
+            true
+          );
         }
 
       } catch (e) {
-        showStatus("⚠️ Erreur JS (parsing global)", true);
-        document.getElementById("apiResponse").innerText = e.toString();
+        showStatus("⚠️ Erreur JS lors du parsing", true);
+        showApiResponse(e.toString());
       }
-
-  });
+    })
+    .catch((err) => {
+      showStatus("❌ Fetch bloqué / erreur réseau", true);
+      showApiResponse(err.toString());
+    });
 }
