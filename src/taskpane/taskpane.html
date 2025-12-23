@@ -20,24 +20,31 @@
     <link href="taskpane.css" rel="stylesheet" type="text/css" />
 </head>
 
-<body class="ms-font-m ms-welcome ms-Fabric">
-    <header class="ms-welcome__header ms-bgColor-neutralLighter">
-        <img width="90" height="90" src="../../assets/logo-filled.png" alt="Contoso" title="Contoso" />
-        <div>
-            <h1 class="ms-font-su" id="user"></h1>
-            <h4 id="userEmail"></h4>
-        </div>
-    </header>
+<body class="divalto-app">
 
-    <!-- testing -->
+  <!-- PROFILE -->
+  <section class="profile-card">
+    <div class="avatar">DL</div>
+    <div>
+      <div class="username" id="user"></div>
+      <div class="email" id="userEmail"></div>
+    </div>
+  </section>
 
-    <main id="app-body" class="ms-welcome__main">
-        <div id="container2">
-            <button class="btn" id="btnSav">Evenement Sav</button>
-            <button class="btn" id="btnComm">Evenement Negos</button>
-            <div id="status" class="status"></div>
-        </div>
-    </main>
+  <!-- ACTIONS -->
+  <main class="actions-card">
+    <button class="action-btn primary" id="btnSav">
+      Événement SAV
+    </button>
+
+    <button class="action-btn secondary" id="btnComm">
+      Événement Négoce
+    </button>
+
+    <div id="status" class="status"></div>
+  </main>
+
 </body>
+
 
 </html>

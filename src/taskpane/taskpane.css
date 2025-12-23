@@ -1,4 +1,140 @@
-/* Base reset */
+:root {
+  --divalto-dark: #2f3b45;
+  --divalto-orange: #f6a800;
+  --divalto-orange-hover: #e39800;
+  --divalto-bg: #f4f6f8;
+  --divalto-card: #ffffff;
+  --success-bg: #e6f4ea;
+  --success-text: #137333;
+  --error-bg: #fdecea;
+  --error-text: #b3261e;
+}
+
+body.divalto-app {
+  margin: 0;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  background: var(--divalto-bg);
+}
+
+/* HEADER */
+.divalto-header {
+  background: var(--divalto-dark);
+  padding: 14px 16px;
+  color: white;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.logo {
+  width: 32px;
+  height: 32px;
+}
+
+.brand {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+/* PROFILE */
+.profile-card {
+  background: var(--divalto-orange);
+  color: white;
+  display: flex;
+  gap: 12px;
+  padding: 16px;
+  align-items: center;
+}
+
+.avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: white;
+  color: var(--divalto-orange);
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.username {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.email {
+  font-size: 13px;
+  opacity: 0.9;
+}
+
+/* ACTIONS CARD */
+.actions-card {
+  background: var(--divalto-card);
+  margin: 16px;
+  padding: 16px;
+  border-radius: 12px;
+  box-shadow: 0 8px 20px rgba(0,0,0,.06);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* BUTTONS */
+.action-btn {
+  border: none;
+  border-radius: 10px;
+  padding: 14px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .2s ease;
+}
+
+.action-btn.primary {
+  background: var(--divalto-orange);
+  color: white;
+}
+
+.action-btn.primary:hover {
+  background: var(--divalto-orange-hover);
+}
+
+.action-btn.secondary {
+  background: #f1f3f4;
+  color: #333;
+}
+
+.action-btn.secondary:hover {
+  background: #e5e7e9;
+}
+
+/* STATUS */
+.status {
+  margin-top: 8px;
+  padding: 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  display: none;
+}
+
+.status.success {
+  background: var(--success-bg);
+  color: var(--success-text);
+  display: block;
+}
+
+.status.error {
+  background: var(--error-bg);
+  color: var(--error-text);
+  display: block;
+}
+
+
+/* 
 html, body {
     margin: 0;
     padding: 0;
@@ -9,7 +145,7 @@ html, body {
     box-sizing: border-box;
 }
 
-/* Header */
+
 header.ms-welcome__header {
     display: flex;
     width: 90.5%;
@@ -30,12 +166,12 @@ header.ms-welcome__header h1 {
     font-weight: 600;
 }
 
-/* Main welcome section */
+
 .ms-welcome__main {
     padding: 20px;
 }
 
-/* Container for testing */
+
 #container2 {
     background-color: #fff;
     padding: 20px;
@@ -48,7 +184,7 @@ header.ms-welcome__header h1 {
     align-items: stretch;
 }
 
-/* Button */
+
 .btn {
     background-color: orange;
     color: #fff;
@@ -90,32 +226,6 @@ header.ms-welcome__header h1 {
 }
 
 
-/* Result area */
-/* #result {
-    display: none;
-    background-color: #f1f1f1;
-    padding: 15px;
-    border-radius: 5px;
-    font-size: 14px;
-    line-height: 1.5;
-    color: #333;
-    white-space: pre-wrap;
-    overflow-x: auto;
-}
-
-#resultJson {
-    display: none;
-    background-color: #f1f1f1;
-    padding: 15px;
-    border-radius: 5px;
-    font-size: 14px;
-    line-height: 1.5;
-    color: #333;
-    white-space: pre-wrap;
-    overflow-x: auto;
-} */
-
-/* App body section */
 #app-body {
     max-width: 650px;
     margin: 20px auto;
@@ -130,7 +240,6 @@ header.ms-welcome__header h1 {
     color: orange;
 }
 
-/* Run button */
 #run {
     background-color: orange;
     color: #fff;
@@ -148,7 +257,7 @@ header.ms-welcome__header h1 {
 
 #run:hover {
     background-color: #005a9e;
-}
+} */
 
 /* Responsive */
 @media (max-width: 700px) {

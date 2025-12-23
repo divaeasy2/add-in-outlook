@@ -106,15 +106,6 @@ function showStatus(msg, type = "info") {
   el.style.display = "block";
 }
 
-function fixEncoding(str) {
-  if (!str || typeof str !== "string") return str;
-  try {
-    return decodeURIComponent(escape(str));
-  } catch {
-    return str;
-  }
-}
-
 
 /* ======================
    PREPARE EMAIL (NO UI)
@@ -176,8 +167,6 @@ function send(type) {
       const code = resultStr.match(/"resultcode"\s*:\s*"(\d+)"/)?.[1];
       const evt = resultStr.match(/"EvtNo"\s*:\s*"([^"]+)"/)?.[1]?.trim();
       const err = resultStr.match(/"errormessage"\s*:\s*"([^"]*)"/)?.[1] || "";
-
-      err = fixEncoding(err);
 
       if (code === "0") {
         showStatus(`✅ Succès — Code ${evt}`, "success");
