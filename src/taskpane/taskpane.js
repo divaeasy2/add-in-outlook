@@ -70,7 +70,7 @@
 /* global Office */
 
 /* ======================
-   GLOBAL STATE
+   GLOBAL
 ====================== */
 
 let cachedPayload = null;
@@ -80,169 +80,112 @@ let cachedPayload = null;
 ====================== */
 
 Office.onReady(() => {
-  // User info
   document.getElementById("user").innerText =
     Office.context.mailbox.userProfile.displayName;
 
   document.getElementById("userEmail").innerText =
     Office.context.mailbox.userProfile.emailAddress;
 
-  const sideload = document.getElementById("sideload-msg");
-  if (sideload) sideload.style.display = "none";
-
-  const appBody = document.getElementById("app-body");
-  if (appBody) appBody.style.display = "block";
-
-  document.getElementById("btnDetails").onclick = displayEmailDetails;
-  document.getElementById("btnSav").onclick = () => sendToApi("1");
-  document.getElementById("btnComm").onclick = () => sendToApi("2");
+  document.getElementById("btnSav").onclick = () => send("1");
+  document.getElementById("btnComm").onclick = () => send("2");
 
   document.getElementById("btnSav").disabled = true;
   document.getElementById("btnComm").disabled = true;
+
+  prepareEmail();
 });
 
 /* ======================
-   UI HELPERS
+   STATUS (NOTIFICATION)
 ====================== */
 
-function showStatus(msg, isError = false) {
+function showStatus(msg, type = "info") {
   const el = document.getElementById("status");
+  el.className = `status ${type}`;
   el.innerText = msg;
-  el.style.color = isError ? "red" : "green";
+  el.style.display = "block";
 }
 
-function showApiResponse(text) {
-  document.getElementById("apiResponse").innerText = text;
+function fixEncoding(str) {
+  if (!str || typeof str !== "string") return str;
+  try {
+    return decodeURIComponent(escape(str));
+  } catch {
+    return str;
+  }
 }
+
 
 /* ======================
-   DISPLAY EMAIL (NO FETCH)
+   PREPARE EMAIL (NO UI)
 ====================== */
 
-function displayEmailDetails() {
-
-  const body = document.getElementById("body");
-  if (body) body.style.display = "block";
-
-  const myresult = document.getElementById("result");
-  if (myresult) myresult.style.display = "block";
-
-  const resultJson = document.getElementById("resultJson");
-  if (resultJson) resultJson.style.display = "block";
-
+function prepareEmail() {
   const item = Office.context.mailbox.item;
-
-  const subject = item.subject || "";
-  const from = item.from?.emailAddress || "";
   const user = Office.context.mailbox.userProfile.emailAddress;
 
-  item.body.getAsync(Office.CoercionType.Text, (result) => {
-    if (result.status !== Office.AsyncResultStatus.Succeeded) {
-      showStatus("❌ Impossible de lire l’email", true);
+  item.body.getAsync(Office.CoercionType.Text, (res) => {
+    if (res.status !== Office.AsyncResultStatus.Succeeded) {
+      showStatus("❌ Impossible de lire l’email", "error");
       return;
     }
 
-    body.innerText = result.value;
-    myresult.innerText =
-      `Subject: ${subject}\nFrom: ${from}`;
-
-    currentPayload = {
+    cachedPayload = {
       evenement: {
         type: "",
         utilisateur: user,
-        tiers: from,
-        lib: subject,
+        tiers: item.from?.emailAddress || "",
+        lib: item.subject || "",
         pj: ""
       }
     };
 
-    resultJson.innerText =
-      JSON.stringify(currentPayload, null, 2);
-
     document.getElementById("btnSav").disabled = false;
     document.getElementById("btnComm").disabled = false;
 
-    showStatus("📩 Détails affichés");
+    showStatus("📩 Email prêt pour traitement", "info");
   });
 }
 
-
 /* ======================
-   SEND TO API (SAV / COMM)
+   SEND (SAV / COMM)
 ====================== */
 
-function sendToApi(type) {
-  if (!currentPayload) {
-    showStatus("❌ Aucun email chargé", true);
+function send(type) {
+  if (!cachedPayload) {
+    showStatus("❌ Aucun email prêt", "error");
     return;
   }
 
-  currentPayload.evenement.type = type;
+  cachedPayload.evenement.type = type;
 
-  document.getElementById("resultJson").innerText =
-    JSON.stringify(currentPayload, null, 2);
+  showStatus("⏳ Envoi en cours...", "info");
 
-  showStatus("⏳ Envoi vers l’API...");
-
-  callApiSafe(currentPayload);
-}
-
-/* ======================
-   SAFE FETCH (PROXY)
-====================== */
-
-function callApiSafe(payload) {
   fetch("https://maisondelarose.org/proxy/proxy.php", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload)
+    body: JSON.stringify(cachedPayload)
   })
     .then(async (res) => {
       const text = await res.text();
-      showApiResponse(text);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-      if (!res.ok) {
-        showStatus(`❌ HTTP ${res.status}`, true);
-        return;
-      }
+      const parsed = JSON.parse(text);
+      const resultStr = parsed?.json?.result || "";
 
-      try {
-        const parsed = JSON.parse(text);
+      const code = resultStr.match(/"resultcode"\s*:\s*"(\d+)"/)?.[1];
+      const evt = resultStr.match(/"EvtNo"\s*:\s*"([^"]+)"/)?.[1]?.trim();
+      const err = resultStr.match(/"errormessage"\s*:\s*"([^"]*)"/)?.[1] || "";
 
-        document.getElementById("apiResponse").innerText =
-          JSON.stringify(parsed, null, 2);
+      err = fixEncoding(err);
 
-        if (!parsed.json || !parsed.json.result) {
-          showStatus("❌ Structure API inattendue", true);
-          return;
-        }
-
-        const resultStr = parsed.json.result;
-
-        const codeMatch = resultStr.match(/"resultcode"\s*:\s*"(\d+)"/);
-        const evtMatch = resultStr.match(/"EvtNo"\s*:\s*"([^"]+)"/);
-        const errMatch = resultStr.match(/"errormessage"\s*:\s*"([^"]*)"/);
-
-        const resultcode = codeMatch ? codeMatch[1] : null;
-        const evtNo = evtMatch ? evtMatch[1].trim() : null;
-        const errorMsg = errMatch ? errMatch[1] : null;
-
-        if (resultcode === "0") {
-          showStatus(`✅ Succès — EVTCODE : ${evtNo}`);
-        } else {
-          showStatus(
-            `❌ Erreur API : ${errorMsg || "Erreur inconnue"}`,
-            true
-          );
-        }
-
-      } catch (e) {
-        showStatus("⚠️ Erreur JS lors du parsing", true);
-        showApiResponse(e.toString());
+      if (code === "0") {
+        showStatus(`✅ Succès — Code ${evt}`, "success");
+      } else {
+        showStatus(`❌ ${err || "Erreur inconnue"}`, "error");
       }
     })
-    .catch((err) => {
-      showStatus("❌ Fetch bloqué / erreur réseau", true);
-      showApiResponse(err.toString());
+    .catch(() => {
+      showStatus("❌ Erreur de communication avec le serveur", "error");
     });
 }

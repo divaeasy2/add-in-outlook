@@ -66,8 +66,32 @@ header.ms-welcome__header h1 {
     background-color: #005a9e;
 }
 
+.status {
+  margin-top: 12px;
+  padding: 10px 14px;
+  border-radius: 6px;
+  font-weight: 600;
+  display: none;
+}
+
+.status.info {
+  background: #e8f1ff;
+  color: #084298;
+}
+
+.status.success {
+  background: #e6f4ea;
+  color: #0f5132;
+}
+
+.status.error {
+  background: #fdecea;
+  color: #842029;
+}
+
+
 /* Result area */
-#result {
+/* #result {
     display: none;
     background-color: #f1f1f1;
     padding: 15px;
@@ -89,30 +113,7 @@ header.ms-welcome__header h1 {
     color: #333;
     white-space: pre-wrap;
     overflow-x: auto;
-}
-
-#body {
-    display: none;
-    background-color: #f1f1f1;
-    padding: 15px;
-    border-radius: 5px;
-    font-size: 14px;
-    line-height: 1.5;
-    color: #333;
-    white-space: pre-wrap;
-    overflow-x: auto;
-}
-
-#apiResponse {
-    background-color: #f1f1f1;
-    padding: 15px;
-    border-radius: 5px;
-    font-size: 14px;
-    line-height: 1.5;
-    color: #333;
-    white-space: pre-wrap;
-    overflow-x: auto;
-}
+} */
 
 /* App body section */
 #app-body {
