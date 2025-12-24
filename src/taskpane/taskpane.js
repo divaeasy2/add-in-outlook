@@ -69,15 +69,9 @@
 
 /* global Office */
 
-/* ======================
-   GLOBAL
-====================== */
-
 let cachedPayload = null;
 
-/* ======================
-   OFFICE READY
-====================== */
+const MAX_ATTACHMENT_SIZE = 300 * 1024; // 300 KB
 
 Office.onReady(() => {
   document.getElementById("user").innerText =
@@ -96,7 +90,7 @@ Office.onReady(() => {
 });
 
 /* ======================
-   STATUS (NOTIFICATION)
+   STATUS
 ====================== */
 
 function showStatus(msg, type = "info") {
@@ -106,9 +100,8 @@ function showStatus(msg, type = "info") {
   el.style.display = "block";
 }
 
-
 /* ======================
-   PREPARE EMAIL (NO UI)
+   PREPARE EMAIL
 ====================== */
 
 function prepareEmail() {
@@ -139,42 +132,93 @@ function prepareEmail() {
 }
 
 /* ======================
-   SEND (SAV / COMM)
+   ATTACHMENT (SMART)
 ====================== */
 
-function send(type) {
+function getAttachmentBase64(att) {
+  return new Promise((resolve, reject) => {
+    Office.context.mailbox.item.getAttachmentContentAsync(att.id, (res) => {
+      if (res.status !== Office.AsyncResultStatus.Succeeded) {
+        reject("Lecture PJ échouée");
+        return;
+      }
+
+      if (
+        res.value.format !==
+        Office.MailboxEnums.AttachmentContentFormat.Base64
+      ) {
+        reject("Format PJ non supporté");
+        return;
+      }
+
+      resolve(res.value.content);
+    });
+  });
+}
+
+async function getSmartAttachment() {
+  const item = Office.context.mailbox.item;
+
+  if (!item.attachments || item.attachments.length === 0) {
+    return "";
+  }
+
+  const att = item.attachments[0];
+
+  if (att.size > MAX_ATTACHMENT_SIZE) {
+    showStatus("⚠️ Pièce jointe ignorée (trop volumineuse)", "info");
+    return "";
+  }
+
+  showStatus("📎 Lecture de la pièce jointe...", "info");
+
+  return await getAttachmentBase64(att);
+}
+
+/* ======================
+   SEND
+====================== */
+
+async function send(type) {
   if (!cachedPayload) {
     showStatus("❌ Aucun email prêt", "error");
     return;
   }
 
-  cachedPayload.evenement.type = type;
+  try {
+    cachedPayload.evenement.type = type;
+    cachedPayload.evenement.pj = await getSmartAttachment();
 
-  showStatus("⏳ Envoi en cours...", "info");
+    showStatus("⏳ Test Envoi en cours...", "info");
 
-  fetch("https://maisondelarose.org/proxy/proxy.php", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(cachedPayload)
-  })
-    .then(async (res) => {
-      const text = await res.text();
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-      const parsed = JSON.parse(text);
-      const resultStr = parsed?.json?.result || "";
-
-      const code = resultStr.match(/"resultcode"\s*:\s*"(\d+)"/)?.[1];
-      const evt = resultStr.match(/"EvtNo"\s*:\s*"([^"]+)"/)?.[1]?.trim();
-      const err = resultStr.match(/"errormessage"\s*:\s*"([^"]*)"/)?.[1] || "";
-
-      if (code === "0") {
-        showStatus(`✅ Succès — Code ${evt}`, "success");
-      } else {
-        showStatus(`❌ ${err || "Erreur inconnue"}`, "error");
+    const res = await fetch(
+      "https://maisondelarose.org/proxy/proxy.php",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(cachedPayload)
       }
-    })
-    .catch(() => {
-      showStatus("❌ Erreur de communication avec le serveur", "error");
-    });
+    );
+
+    const text = await res.text();
+    if (!res.ok) throw new Error();
+
+    const parsed = JSON.parse(text);
+    const resultStr = parsed?.json?.result || "";
+
+    const code = resultStr.match(/"resultcode"\s*:\s*"(\d+)"/)?.[1];
+    const evt = resultStr.match(/"EvtNo"\s*:\s*"([^"]+)"/)?.[1]?.trim();
+    const err =
+      resultStr.match(/"errormessage"\s*:\s*"([^"]*)"/)?.[1] || "";
+
+    if (code === "0") {
+      showStatus(`✅ Succès — Code ${evt}`, "success");
+    } else {
+      showStatus(`❌ ${err || "Erreur inconnue"}`, "error");
+    }
+
+  } catch {
+    showStatus("❌ Erreur de communication avec le serveur !!!!", "error");
+  }
 }
+
