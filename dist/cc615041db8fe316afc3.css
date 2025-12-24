@@ -1,5 +1,6 @@
 :root {
   --divalto-dark: #2f3b45;
+  --divalto-dark-hover: #263541;
   --divalto-orange: #f6a800;
   --divalto-orange-hover: #e39800;
   --divalto-bg: #f4f6f8;
@@ -104,12 +105,12 @@ body.divalto-app {
 }
 
 .action-btn.secondary {
-  background: #f1f3f4;
-  color: #333;
+  background: var(--divalto-dark);
+  color: white;
 }
 
 .action-btn.secondary:hover {
-  background: #e5e7e9;
+  background: var(--divalto-dark-hover);
 }
 
 /* STATUS */
@@ -132,6 +133,55 @@ body.divalto-app {
   color: var(--error-text);
   display: block;
 }
+
+#pj {
+  display: none;
+  max-width: 680px;
+  max-height: 260px;
+
+  margin: 20px auto;
+  padding: 14px 16px;
+
+  background: linear-gradient(135deg, #263541, #2f3b45);
+  color: #f1f1f1;
+
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+
+  box-shadow:
+    0 6px 18px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+
+  overflow: auto;
+  word-break: break-all;
+  white-space: pre-wrap;
+
+  scrollbar-width: thin;
+  scrollbar-color: #8f8f8f transparent;
+}
+
+/* Scrollbar (Chrome / Edge) */
+#pj::-webkit-scrollbar {
+  width: 8px;
+}
+
+#pj::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+#pj::-webkit-scrollbar-thumb {
+  background: rgba(180, 180, 180, 0.35);
+  border-radius: 6px;
+}
+
+#pj::-webkit-scrollbar-thumb:hover {
+  background: rgba(180, 180, 180, 0.55);
+}
+
 
 
 /* 

@@ -70,8 +70,7 @@
 /* global Office */
 
 let cachedPayload = null;
-
-const MAX_ATTACHMENT_SIZE = 300 * 1024; // 300 KB
+const MAX_EMAIL_SIZE = 500 * 1024; // 500 KB
 
 Office.onReady(() => {
   document.getElementById("user").innerText =
@@ -107,7 +106,7 @@ function showStatus(msg, type = "info") {
 function prepareEmail() {
   const item = Office.context.mailbox.item;
   const user = Office.context.mailbox.userProfile.emailAddress;
-
+item.getAsFileAsync()
   item.body.getAsync(Office.CoercionType.Text, (res) => {
     if (res.status !== Office.AsyncResultStatus.Succeeded) {
       showStatus("❌ Impossible de lire l’email", "error");
@@ -127,53 +126,37 @@ function prepareEmail() {
     document.getElementById("btnSav").disabled = false;
     document.getElementById("btnComm").disabled = false;
 
-    showStatus("📩 Email prêt pour traitement", "info");
+    showStatus("✅ Email prêt pour traitement", "info");
   });
 }
 
 /* ======================
-   ATTACHMENT (SMART)
+   BUILD EMAIL (.eml)
 ====================== */
 
-function getAttachmentBase64(att) {
-  return new Promise((resolve, reject) => {
-    Office.context.mailbox.item.getAttachmentContentAsync(att.id, (res) => {
-      if (res.status !== Office.AsyncResultStatus.Succeeded) {
-        reject("Lecture PJ échouée");
-        return;
-      }
+function buildEmailBase64(item, bodyText) {
+  const bodyBase64 = btoa(unescape(encodeURIComponent(bodyText)));
 
-      if (
-        res.value.format !==
-        Office.MailboxEnums.AttachmentContentFormat.Base64
-      ) {
-        reject("Format PJ non supporté");
-        return;
-      }
+  const eml =
+`From: ${item.from?.emailAddress || ""}
+To: ${Office.context.mailbox.userProfile.emailAddress}
+Subject: ${item.subject || ""}
+Date: ${new Date().toUTCString()}
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: base64
 
-      resolve(res.value.content);
-    });
-  });
-}
+${bodyBase64}`;
 
-async function getSmartAttachment() {
-  const item = Office.context.mailbox.item;
-
-  if (!item.attachments || item.attachments.length === 0) {
-    return "";
+  const size = new Blob([eml]).size;
+  if (size > MAX_EMAIL_SIZE) {
+    return null;
   }
 
-  const att = item.attachments[0];
-
-  if (att.size > MAX_ATTACHMENT_SIZE) {
-    showStatus("⚠️ Pièce jointe ignorée (trop volumineuse)", "info");
-    return "";
-  }
-
-  showStatus("📎 Lecture de la pièce jointe...", "info");
-
-  return await getAttachmentBase64(att);
+  return btoa(unescape(encodeURIComponent(eml)));
 }
+
+
 
 /* ======================
    SEND
@@ -181,24 +164,50 @@ async function getSmartAttachment() {
 
 async function send(type) {
   if (!cachedPayload) {
-    showStatus("❌ Aucun email prêt", "error");
+    showStatus("⚠️ Aucun email prêt", "error");
     return;
   }
 
   try {
+    const item = Office.context.mailbox.item;
+
+    showStatus("⌛ Lecture de l’email...", "info");
+
+    const body = await new Promise((resolve, reject) => {
+      item.body.getAsync(Office.CoercionType.Text, r => {
+        r.status === Office.AsyncResultStatus.Succeeded
+          ? resolve(r.value)
+          : reject();
+      });
+    });
+
+    showStatus("🗜 Encodage de l’email...", "info");
+
+    const emailBase64 = buildEmailBase64(item, body);
+
     cachedPayload.evenement.type = type;
-    cachedPayload.evenement.pj = await getSmartAttachment();
 
-    showStatus("⏳ Test Envoi en cours...", "info");
+    if (!emailBase64) {
+      cachedPayload.evenement.pj = "";
+      showStatus("⚠️ Email trop volumineux", "error");
+    } else {
+      cachedPayload.evenement.pj = emailBase64;
+      showStatus("✅ Email encodé avec succès", "info");
 
-    const res = await fetch(
-      "https://maisondelarose.org/proxy/proxy.php",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(cachedPayload)
+      const pj = document.getElementById("pj");
+      if (pj) {
+        pj.style.display = "block";
+        pj.innerText = emailBase64;
       }
-    );
+    }
+
+    showStatus("🚀 Envoi vers le serveur...", "info");
+
+    const res = await fetch("https://maisondelarose.org/proxy/proxy.php", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(cachedPayload)
+    });
 
     const text = await res.text();
     if (!res.ok) throw new Error();
@@ -218,7 +227,6 @@ async function send(type) {
     }
 
   } catch {
-    showStatus("❌ Erreur de communication avec le serveur !!!!", "error");
+    showStatus("❌ Erreur de communication avec le serveur", "error");
   }
 }
-
