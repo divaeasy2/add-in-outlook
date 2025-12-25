@@ -236,7 +236,7 @@ function debugLog(msg){
 async function loadChildEvents() {
   if (!cachedPayload) return showStatus("⚠️ Aucun email prêt", "error");
 
-  showStatus("⏳ Vérification...", "info");
+  showStatus("⏳ Vérification des événements ...", "info");
 
   const payload = {
     evenement: {
@@ -254,38 +254,46 @@ async function loadChildEvents() {
   if (!res) return showStatus("❌ Erreur réseau", "error");
 
   const parsed = parseWeirdApiResponse(res);
+  const popup = document.getElementById("childPopup");
+  const select = document.getElementById("childSelect");
+  const evtCount = document.getElementById("evtCount");
 
-  if (parsed.ok) {
-    showStatus(`🟢 ${parsed.count} événements récupérés`, "success");
-
-    const list = document.getElementById("childList");
-    list.innerHTML = `<option value="">--- Choisissez ---</option>`;
-    list.style.display = "block";
-
-    parsed.events.forEach(evt => {
-      const opt = document.createElement("option");
-      opt.value = evt.evtNo;
-      opt.innerText = `${evt.evtNo} - ${evt.lib || "(sans lib)"}`;
-      list.appendChild(opt);
-    });
-
-    list.onchange = () => {
-      cachedPayload.evenement.evt_lie = list.value || ""; // 👉 هادي المعتمدة دابا
-
-      if (list.value) {
-        showChildHint("⚠️ Événement lié sélectionné — cliquez sur Événement SAV pour l’envoyer");
-      } else {
-        showChildHint("");
-      }
-
-      showStatus(`📌 Sélectionné: ${list.value}`, "info");
-    };
-
-    return;
+  if (!parsed.ok) {
+    popup.style.display = "none";
+    return showStatus("🔴 " + parsed.error, "error");
   }
 
-  showStatus("🔴 " + parsed.error, "error");
+  // ✔️ afficher popup
+  popup.style.display = "block";
+
+  // 🟡 vider وملأ select
+  select.innerHTML = `<option value="">-- Choisissez un événement --</option>`;
+  parsed.events.forEach(evt => {
+    const opt = document.createElement("option");
+    opt.value = evt.evtNo;
+    opt.textContent = `${evt.evtNo} - ${evt.lib || "(sans lib)"}`;
+    select.appendChild(opt);
+  });
+
+  // 🔢 afficher العدد
+  evtCount.innerText = `${parsed.count} événements trouvés`;
+
+  // ✔️ زر تأكيد
+  document.getElementById("confirmEvt").onclick = () => {
+    const chosen = select.value;
+    if (!chosen) return showStatus("⚠️ Sélectionnez un événement", "error");
+
+    cachedPayload.evenement.evt_lie = chosen;
+    popup.style.display = "none";
+
+    showStatus(`🔗 Événement lié enregistré: ${chosen}`, "success");
+    showChildHint("⚠️ Événement lié sélectionné — cliquez sur Événement SAV pour l’envoyer");
+  };
+
+  showStatus(`🟢 ${parsed.count} événements récupérés`, "success");
 }
+
+
 
 
 /* ======================

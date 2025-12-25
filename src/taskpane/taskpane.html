@@ -58,7 +58,18 @@
 
     <button id="btnChild" class="action-btn secondary">Evenement liés</button>
 
-    <select id="childList" style="display:none; width:100%; margin-top:10px"></select>
+    <div id="childPopup" class="popup" style="display:none;">
+      <div class="popup-header">
+        <span id="evtCount">0 événements trouvés</span>
+      </div>
+
+      <select id="childSelect" class="event-select"></select>
+
+      <button id="confirmEvt" class="action-btn primary" style="margin-top:10px;">
+        ✔ Confirmer l'événement lié
+      </button>
+    </div>
+
 
 
     <div id="status" class="status"></div>
