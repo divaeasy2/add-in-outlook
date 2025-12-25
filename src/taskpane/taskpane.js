@@ -67,6 +67,7 @@
 //     `Subject: ${subject}\nFrom: ${from}`;
 // }
 
+
 /* global Office */
 
 let cachedPayload = null;
@@ -78,9 +79,13 @@ Office.onReady(() => {
 
   document.getElementById("userEmail").innerText =
     Office.context.mailbox.userProfile.emailAddress;
-
+    
   document.getElementById("btnSav").onclick = () => send("1");
   document.getElementById("btnComm").onclick = () => send("2");
+  document.getElementById("btnDDP").onclick = () => send("3");
+  document.getElementById("btnCDE").onclick = () => send("4");
+  document.getElementById("btnDDI").onclick = () => send("5");
+  document.getElementById("btnChild").onclick = loadChildEvents;
 
   document.getElementById("btnSav").disabled = true;
   document.getElementById("btnComm").disabled = true;
@@ -99,6 +104,19 @@ function showStatus(msg, type = "info") {
   el.style.display = "block";
 }
 
+/* 🔥 إشعار خاص بصري تحت زر SAV */
+function showChildHint(msg = "") {
+  const hint = document.getElementById("savHint");
+  if (!hint) return;
+  if (!msg) {
+    hint.style.display = "none";
+    hint.innerText = "";
+  } else {
+    hint.innerText = msg;
+    hint.style.display = "block";
+  }
+}
+
 /* ======================
    PREPARE EMAIL
 ====================== */
@@ -106,7 +124,7 @@ function showStatus(msg, type = "info") {
 function prepareEmail() {
   const item = Office.context.mailbox.item;
   const user = Office.context.mailbox.userProfile.emailAddress;
-item.getAsFileAsync()
+
   item.body.getAsync(Office.CoercionType.Text, (res) => {
     if (res.status !== Office.AsyncResultStatus.Succeeded) {
       showStatus("❌ Impossible de lire l’email", "error");
@@ -119,7 +137,8 @@ item.getAsFileAsync()
         utilisateur: user,
         tiers: item.from?.emailAddress || "",
         lib: item.subject || "",
-        pj: ""
+        pj: "",
+        evt_lie: ""
       }
     };
 
@@ -156,10 +175,117 @@ ${bodyBase64}`;
   return btoa(unescape(encodeURIComponent(eml)));
 }
 
+function parseWeirdApiResponse(raw) {
+  let n1;
+  try { 
+    n1 = JSON.parse(raw); 
+  } catch (e) {
+    return { ok:false, error:"N1 n'est pas JSON", raw };
+  }
+
+  let n2 = n1.raw || n1.response || null;
+  if (!n2) return { ok:false, error:"Aucune clé raw/response trouvée", raw:n1 };
+
+  let cleaned = n2
+    .replace(/\\"/g, '"')
+    .replace(/"{/g, '{')
+    .replace(/}"/g, '}')
+    .replace(/"result":"+"result":/g, '"result":')
+    .trim();
+
+  debugLog("🔧 Nettoyé:");
+  debugLog(cleaned);
+
+  let n3;
+  try {
+    n3 = JSON.parse(cleaned);
+  } catch (e) {
+    return { ok:false, error:"❌ Impossible de parser N2 → JSON", raw:n2, cleaned };
+  }
+
+  const events = n3.Evenements || n3.evenements || (n3.response && n3.response.Evenements) || null;
+
+  if (!events) 
+    return { ok:false, error:"❌ Aucun événement trouvé", json:n3 };
+
+  return {
+    ok: true,
+    count: events.length,
+    events
+  };
+}
+
+
+
+function debugLog(msg){
+    const box = document.getElementById("debug");
+    box.style.display = "block";
+    box.innerText += "\n" + msg;
+}
+
+/* ======================
+   CHOIX D'UN CHILD EVENT
+====================== */
+
+async function loadChildEvents() {
+  if (!cachedPayload) return showStatus("⚠️ Aucun email prêt", "error");
+
+  showStatus("⏳ Vérification...", "info");
+
+  const payload = {
+    evenement: {
+      utilisateur: cachedPayload.evenement.utilisateur, 
+      tiers: cachedPayload.evenement.tiers
+    }
+  };
+
+  const res = await fetch("https://maisondelarose.org/proxy/proxy_child.php", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  }).then(r => r.text()).catch(() => null);
+
+  if (!res) return showStatus("❌ Erreur réseau", "error");
+
+  const parsed = parseWeirdApiResponse(res);
+
+  if (parsed.ok) {
+    showStatus(`🟢 ${parsed.count} événements récupérés`, "success");
+
+    const events = parsed.events;
+    const list = document.getElementById("childList");
+    list.innerHTML = `<option value="">--- Choisissez ---</option>`;
+    list.style.display = "block";
+
+    events.forEach(evt => {
+      const opt = document.createElement("option");
+      opt.value = evt.evtNo;
+      opt.innerText = `${evt.evtNo} - ${evt.lib || "(sans lib)"}`;
+      list.appendChild(opt);
+    });
+
+    list.onchange = () => {
+      cachedPayload.evenement.evt_child = list.value;
+
+      if (list.value) {
+        showChildHint("⚠️ Vous avez sélectionné un événement enfant — cliquez sur **Événement SAV** pour l’envoyer");
+      } else {
+        showChildHint("");
+      }
+
+      showStatus(`📌 Sélectionné: ${list.value}`, "info");
+    };
+
+    return; 
+  }
+
+  showStatus("🔴 " + parsed.error, "error");
+}
+
 
 
 /* ======================
-   SEND
+   ENVOI
 ====================== */
 
 async function send(type) {
@@ -167,6 +293,9 @@ async function send(type) {
     showStatus("⚠️ Aucun email prêt", "error");
     return;
   }
+
+  // 👉 إذا المستخدم دار SAV كيتحيد التنبيه
+  if (type === "1") showChildHint("");
 
   try {
     const item = Office.context.mailbox.item;
@@ -186,6 +315,7 @@ async function send(type) {
     const emailBase64 = buildEmailBase64(item, body);
 
     cachedPayload.evenement.type = type;
+    cachedPayload.evenement.evt_child = cachedPayload.evenement.evt_child || "";
 
     if (!emailBase64) {
       cachedPayload.evenement.pj = "";
@@ -221,7 +351,7 @@ async function send(type) {
       resultStr.match(/"errormessage"\s*:\s*"([^"]*)"/)?.[1] || "";
 
     if (code === "0") {
-      showStatus(`✅ Succès — Code ${evt}`, "success");
+      showStatus(`🎉 SUCCESS — Code ${evt}`, "success");
     } else {
       showStatus(`❌ ${err || "Erreur inconnue"}`, "error");
     }
@@ -230,3 +360,6 @@ async function send(type) {
     showStatus("❌ Erreur de communication avec le serveur", "error");
   }
 }
+
+
+

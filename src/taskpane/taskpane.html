@@ -33,16 +33,48 @@
 
   <!-- ACTIONS -->
   <main class="actions-card">
-    <button class="action-btn primary" id="btnSav">
+    <button class="action-btn secondary" id="btnSav">
       Événement SAV
     </button>
+
+    <div id="savHint" style="display:none;color:#D35400;font-size:13px;margin-top:4px;"></div>
+
 
     <button class="action-btn secondary" id="btnComm">
       Événement Négoce
     </button>
 
+    <button class="action-btn secondary" id="btnDDP">
+      Entrée de demande de prix
+    </button>
+
+    <button class="action-btn secondary" id="btnCDE">
+      Entrée de commande
+    </button>
+
+    <button class="action-btn secondary" id="btnDDI">
+      Demande d'information
+    </button>
+
+    <button id="btnChild" class="action-btn secondary">Evenement liés</button>
+
+    <select id="childList" style="display:none; width:100%; margin-top:10px"></select>
+
+
     <div id="status" class="status"></div>
     <div id="pj" ></div>
+    <div id="debug" style="
+    background:#111;
+    color:#0f0;
+    padding:10px;
+    margin-top:20px;
+    height:200px;
+    overflow:auto;
+    font-size:12px;
+    border-radius:6px;
+    display:none;
+"></div>
+
   </main>
 
 </body>

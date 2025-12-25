@@ -95,14 +95,14 @@ body.divalto-app {
   transition: all .2s ease;
 }
 
-.action-btn.primary {
+/* .action-btn.primary {
   background: var(--divalto-orange);
   color: white;
 }
 
 .action-btn.primary:hover {
   background: var(--divalto-orange-hover);
-}
+} */
 
 .action-btn.secondary {
   background: var(--divalto-dark);
@@ -110,7 +110,7 @@ body.divalto-app {
 }
 
 .action-btn.secondary:hover {
-  background: var(--divalto-dark-hover);
+  background: var(--divalto-orange);
 }
 
 /* STATUS */
