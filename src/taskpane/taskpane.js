@@ -80,7 +80,7 @@ Office.onReady(() => {
   document.getElementById("userEmail").innerText =
     Office.context.mailbox.userProfile.emailAddress;
     
-  document.getElementById("btnSav").onclick = () => send("1");
+  document.getElementById("btnSav").onclick = () => send("1"); // SAV = toujours type 1
   document.getElementById("btnComm").onclick = () => send("2");
   document.getElementById("btnDDP").onclick = () => send("3");
   document.getElementById("btnCDE").onclick = () => send("4");
@@ -104,7 +104,6 @@ function showStatus(msg, type = "info") {
   el.style.display = "block";
 }
 
-/* 🔥 إشعار خاص بصري تحت زر SAV */
 function showChildHint(msg = "") {
   const hint = document.getElementById("savHint");
   if (!hint) return;
@@ -168,63 +167,70 @@ Content-Transfer-Encoding: base64
 ${bodyBase64}`;
 
   const size = new Blob([eml]).size;
-  if (size > MAX_EMAIL_SIZE) {
-    return null;
-  }
+  if (size > MAX_EMAIL_SIZE) return null;
 
   return btoa(unescape(encodeURIComponent(eml)));
 }
+
+
+/* ======================
+   PARSER API
+====================== */
 
 function parseWeirdApiResponse(raw) {
   let n1;
   try { 
     n1 = JSON.parse(raw); 
-  } catch (e) {
+  } catch {
     return { ok:false, error:"N1 n'est pas JSON", raw };
   }
 
-  let n2 = n1.raw || n1.response || null;
-  if (!n2) return { ok:false, error:"Aucune clé raw/response trouvée", raw:n1 };
+  let n2 = n1.raw || n1.response || raw;
 
+  // 🧽 تنظيف و تصحيح جميع الأنماط المعطوبة
   let cleaned = n2
     .replace(/\\"/g, '"')
     .replace(/"{/g, '{')
     .replace(/}"/g, '}')
-    .replace(/"result":"+"result":/g, '"result":')
+    // ⬇️ إصلاح كل الأنواع ديال "result" المعطوبة
+    .replace(/""result":/g, '"result":')
+    .replace(/"result":"result":/g, '"result":')
+    .replace(/"result":""/g, '"result":')
+    // ⬇️ إصلاح duplication آخر محتمل
+    .replace(/"result":\s*"({)/g, '"result":$1')
     .trim();
 
-  debugLog("🔧 Nettoyé:");
-  debugLog(cleaned);
+  debugLog("🔧 Nettoyé:\n" + cleaned);
 
   let n3;
-  try {
-    n3 = JSON.parse(cleaned);
-  } catch (e) {
-    return { ok:false, error:"❌ Impossible de parser N2 → JSON", raw:n2, cleaned };
+  try { n3 = JSON.parse(cleaned); }
+  catch {
+    return {
+      ok:false,
+      error:"❌ Impossible de parser N2 → JSON",
+      cleaned
+    };
   }
 
-  const events = n3.Evenements || n3.evenements || (n3.response && n3.response.Evenements) || null;
+  const events =
+    n3.Evenements ||
+    n3.evenements ||
+    (n3.response && n3.response.Evenements);
 
-  if (!events) 
-    return { ok:false, error:"❌ Aucun événement trouvé", json:n3 };
+  if (!events) return { ok:false, error:"❌ Aucun événement trouvé", json:n3 };
 
-  return {
-    ok: true,
-    count: events.length,
-    events
-  };
+  return { ok: true, count: events.length, events };
 }
-
 
 
 function debugLog(msg){
-    const box = document.getElementById("debug");
-    box.style.display = "block";
-    box.innerText += "\n" + msg;
+  const box = document.getElementById("debug");
+  box.style.display = "block";
+  box.innerText += "\n" + msg;
 }
 
 /* ======================
-   CHOIX D'UN CHILD EVENT
+   LOAD CHILD EVENTS
 ====================== */
 
 async function loadChildEvents() {
@@ -234,7 +240,7 @@ async function loadChildEvents() {
 
   const payload = {
     evenement: {
-      utilisateur: cachedPayload.evenement.utilisateur, 
+      utilisateur: cachedPayload.evenement.utilisateur,
       tiers: cachedPayload.evenement.tiers
     }
   };
@@ -252,12 +258,11 @@ async function loadChildEvents() {
   if (parsed.ok) {
     showStatus(`🟢 ${parsed.count} événements récupérés`, "success");
 
-    const events = parsed.events;
     const list = document.getElementById("childList");
     list.innerHTML = `<option value="">--- Choisissez ---</option>`;
     list.style.display = "block";
 
-    events.forEach(evt => {
+    parsed.events.forEach(evt => {
       const opt = document.createElement("option");
       opt.value = evt.evtNo;
       opt.innerText = `${evt.evtNo} - ${evt.lib || "(sans lib)"}`;
@@ -265,10 +270,10 @@ async function loadChildEvents() {
     });
 
     list.onchange = () => {
-      cachedPayload.evenement.evt_child = list.value;
+      cachedPayload.evenement.evt_lie = list.value || ""; // 👉 هادي المعتمدة دابا
 
       if (list.value) {
-        showChildHint("⚠️ Vous avez sélectionné un événement enfant — cliquez sur **Événement SAV** pour l’envoyer");
+        showChildHint("⚠️ Événement lié sélectionné — cliquez sur Événement SAV pour l’envoyer");
       } else {
         showChildHint("");
       }
@@ -276,62 +281,40 @@ async function loadChildEvents() {
       showStatus(`📌 Sélectionné: ${list.value}`, "info");
     };
 
-    return; 
+    return;
   }
 
   showStatus("🔴 " + parsed.error, "error");
 }
 
 
-
 /* ======================
-   ENVOI
+   SEND
 ====================== */
 
 async function send(type) {
-  if (!cachedPayload) {
-    showStatus("⚠️ Aucun email prêt", "error");
-    return;
-  }
+  if (!cachedPayload) return showStatus("⚠️ Aucun email prêt", "error");
 
-  // 👉 إذا المستخدم دار SAV كيتحيد التنبيه
-  if (type === "1") showChildHint("");
+  if (type === "1") showChildHint(""); // logique SAV
 
   try {
     const item = Office.context.mailbox.item;
 
-    showStatus("⌛ Lecture de l’email...", "info");
+    showStatus("⌛ Lecture...", "info");
 
     const body = await new Promise((resolve, reject) => {
       item.body.getAsync(Office.CoercionType.Text, r => {
-        r.status === Office.AsyncResultStatus.Succeeded
-          ? resolve(r.value)
-          : reject();
+        r.status === Office.AsyncResultStatus.Succeeded ? resolve(r.value) : reject();
       });
     });
 
-    showStatus("🗜 Encodage de l’email...", "info");
+    cachedPayload.evenement.type = type;          // 👍 type = 1 pour SAV
+    cachedPayload.evenement.evt_lie = cachedPayload.evenement.evt_lie || ""; // 👍 enfant si كاين
 
     const emailBase64 = buildEmailBase64(item, body);
+    cachedPayload.evenement.pj = emailBase64 || "";
 
-    cachedPayload.evenement.type = type;
-    cachedPayload.evenement.evt_child = cachedPayload.evenement.evt_child || "";
-
-    if (!emailBase64) {
-      cachedPayload.evenement.pj = "";
-      showStatus("⚠️ Email trop volumineux", "error");
-    } else {
-      cachedPayload.evenement.pj = emailBase64;
-      showStatus("✅ Email encodé avec succès", "info");
-
-      const pj = document.getElementById("pj");
-      if (pj) {
-        pj.style.display = "block";
-        pj.innerText = emailBase64;
-      }
-    }
-
-    showStatus("🚀 Envoi vers le serveur...", "info");
+    showStatus("🚀 Envoi...", "info");
 
     const res = await fetch("https://maisondelarose.org/proxy/proxy.php", {
       method: "POST",
@@ -340,26 +323,23 @@ async function send(type) {
     });
 
     const text = await res.text();
-    if (!res.ok) throw new Error();
-
     const parsed = JSON.parse(text);
     const resultStr = parsed?.json?.result || "";
 
     const code = resultStr.match(/"resultcode"\s*:\s*"(\d+)"/)?.[1];
     const evt = resultStr.match(/"EvtNo"\s*:\s*"([^"]+)"/)?.[1]?.trim();
-    const err =
-      resultStr.match(/"errormessage"\s*:\s*"([^"]*)"/)?.[1] || "";
 
     if (code === "0") {
       showStatus(`🎉 SUCCESS — Code ${evt}`, "success");
     } else {
-      showStatus(`❌ ${err || "Erreur inconnue"}`, "error");
+      showStatus(`❌ Erreur`, "error");
     }
 
   } catch {
-    showStatus("❌ Erreur de communication avec le serveur", "error");
+    showStatus("❌ Erreur de communication", "error");
   }
 }
+
 
 
 
