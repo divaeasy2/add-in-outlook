@@ -157,6 +157,21 @@ body.divalto-app {
   display: block;
 }
 
+.cancel-link {
+  margin-left: 6px;
+  font-size: 12px;
+  background: transparent;
+  border: none;
+  color: #B03A2E;
+  cursor: pointer;
+  transition: 0.2s;
+}
+.cancel-link:hover {
+  color: #E74C3C;
+  text-decoration: underline;
+}
+
+
 #pj {
   display: none;
   max-width: 680px;

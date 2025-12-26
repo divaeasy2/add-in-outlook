@@ -87,6 +87,15 @@ Office.onReady(() => {
   document.getElementById("btnDDI").onclick = () => send("5");
   document.getElementById("btnChild").onclick = loadChildEvents;
 
+  document.getElementById("cancelEvtLink").onclick = () => {
+  cachedPayload.evenement.evt_lie = "";    
+  document.getElementById("cancelEvtLink").style.display = "none";
+
+  showStatus("🚫 Lien événement annulé — le SAV sera envoyé sans événement lié", "info");
+  showChildHint("");
+};
+
+
   document.getElementById("btnSav").disabled = true;
   document.getElementById("btnComm").disabled = true;
 
@@ -279,24 +288,26 @@ async function loadChildEvents() {
   evtCount.innerText = `${parsed.count} événements trouvés`;
 
   document.getElementById("confirmEvt").onclick = () => {
-    const chosen = select.value;
-    if (!chosen) return showStatus("⚠️ Sélectionnez un événement", "error");
+  const chosen = select.value;
+  if (!chosen) return showStatus("⚠️ Sélectionnez un événement", "error");
 
-    cachedPayload.evenement.evt_lie = chosen;
-    popup.style.display = "none";
-    document.getElementById("btnSav").disabled = false;
-    document.getElementById("btnComm").disabled = false;
-    document.getElementById("btnDDP").disabled = false;
-    document.getElementById("btnCDE").disabled = false;
-    document.getElementById("btnDDI").disabled = false;
-    document.getElementById("btnChild").disabled = false;
-    showStatus(`🔗 Événement lié enregistré: ${chosen}`, "success");
-    showChildHint("⚠️ Événement lié sélectionné — cliquez sur Événement SAV pour l’envoyer");
-  };
+  cachedPayload.evenement.evt_lie = chosen;
+  popup.style.display = "none";
+
+  ["btnSav","btnComm","btnDDP","btnCDE","btnDDI","btnChild"].forEach(id => {
+    document.getElementById(id).disabled = false;
+  });
+
+  document.getElementById("cancelEvtLink").style.display = "inline-block";
+
+  showStatus(`🔗 Événement lié enregistré: ${chosen}`, "success");
+  showChildHint("⚠️ Événement lié sélectionné — cliquez sur Événement SAV pour l’envoyer");
+};
+
 
   document.getElementById("AnnuleEvt").onclick = () => {
-    document.getElementById("status").style.display = "none";
     showStatus("");
+    document.getElementById("status").style.display = "none";
     popup.style.display = "none";
     document.getElementById("btnSav").disabled = false;
     document.getElementById("btnComm").disabled = false;
