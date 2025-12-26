@@ -8,7 +8,7 @@
     <meta charset="UTF-8" />
     <meta http-equiv="X-UA-Compatible" content="IE=Edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Contoso Task Pane Add-in</title>
+    <title>Divalto Task Pane Add-in</title>
 
     <!-- Office JavaScript API -->
     <script type="text/javascript" src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
@@ -37,7 +37,7 @@
       Événement SAV
     </button>
 
-    <div id="savHint" style="display:none;color:#D35400;font-size:13px;margin-top:4px;"></div>
+    <div id="savHint" class="status.info" style="display:none;"></div>
 
 
     <button class="action-btn secondary" id="btnComm">
@@ -58,22 +58,27 @@
 
     <button id="btnChild" class="action-btn secondary">Evenement liés</button>
 
+    <div class="parentPopup"></div>
     <div id="childPopup" class="popup" style="display:none;">
       <div class="popup-header">
         <span id="evtCount">0 événements trouvés</span>
       </div>
 
       <select id="childSelect" class="event-select"></select>
-
-      <button id="confirmEvt" class="action-btn primary" style="margin-top:10px;">
-        ✔ Confirmer l'événement lié
-      </button>
+      <div class="btnPopup">
+        <button id="confirmEvt" class="action-btn primary" style="margin-top:10px;">
+          Confirmer
+        </button>
+        <button id="AnnuleEvt" class="action-btn secondary" style="margin-top:10px;">
+          Annuler
+        </button>
+      </div>
     </div>
 
 
 
     <div id="status" class="status"></div>
-    <div id="pj" ></div>
+    <!-- <div id="pj" ></div> -->
     <div id="debug" style="
     background:#111;
     color:#0f0;

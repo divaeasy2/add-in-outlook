@@ -80,7 +80,7 @@ Office.onReady(() => {
   document.getElementById("userEmail").innerText =
     Office.context.mailbox.userProfile.emailAddress;
     
-  document.getElementById("btnSav").onclick = () => send("1"); // SAV = toujours type 1
+  document.getElementById("btnSav").onclick = () => send("1");
   document.getElementById("btnComm").onclick = () => send("2");
   document.getElementById("btnDDP").onclick = () => send("3");
   document.getElementById("btnCDE").onclick = () => send("4");
@@ -187,16 +187,13 @@ function parseWeirdApiResponse(raw) {
 
   let n2 = n1.raw || n1.response || raw;
 
-  // 🧽 تنظيف و تصحيح جميع الأنماط المعطوبة
   let cleaned = n2
     .replace(/\\"/g, '"')
     .replace(/"{/g, '{')
     .replace(/}"/g, '}')
-    // ⬇️ إصلاح كل الأنواع ديال "result" المعطوبة
     .replace(/""result":/g, '"result":')
     .replace(/"result":"result":/g, '"result":')
     .replace(/"result":""/g, '"result":')
-    // ⬇️ إصلاح duplication آخر محتمل
     .replace(/"result":\s*"({)/g, '"result":$1')
     .trim();
 
@@ -225,7 +222,7 @@ function parseWeirdApiResponse(raw) {
 
 function debugLog(msg){
   const box = document.getElementById("debug");
-  box.style.display = "block";
+  // box.style.display = "block";
   box.innerText += "\n" + msg;
 }
 
@@ -234,6 +231,7 @@ function debugLog(msg){
 ====================== */
 
 async function loadChildEvents() {
+  document.getElementById("status").style.display = "block";
   if (!cachedPayload) return showStatus("⚠️ Aucun email prêt", "error");
 
   showStatus("⏳ Vérification des événements ...", "info");
@@ -263,10 +261,13 @@ async function loadChildEvents() {
     return showStatus("🔴 " + parsed.error, "error");
   }
 
-  // ✔️ afficher popup
   popup.style.display = "block";
-
-  // 🟡 vider وملأ select
+  document.getElementById("btnSav").disabled = true;
+  document.getElementById("btnComm").disabled = true;
+  document.getElementById("btnDDP").disabled = true;
+  document.getElementById("btnCDE").disabled = true;
+  document.getElementById("btnDDI").disabled = true;
+  document.getElementById("btnChild").disabled = true;
   select.innerHTML = `<option value="">-- Choisissez un événement --</option>`;
   parsed.events.forEach(evt => {
     const opt = document.createElement("option");
@@ -275,19 +276,35 @@ async function loadChildEvents() {
     select.appendChild(opt);
   });
 
-  // 🔢 afficher العدد
   evtCount.innerText = `${parsed.count} événements trouvés`;
 
-  // ✔️ زر تأكيد
   document.getElementById("confirmEvt").onclick = () => {
     const chosen = select.value;
     if (!chosen) return showStatus("⚠️ Sélectionnez un événement", "error");
 
     cachedPayload.evenement.evt_lie = chosen;
     popup.style.display = "none";
-
+    document.getElementById("btnSav").disabled = false;
+    document.getElementById("btnComm").disabled = false;
+    document.getElementById("btnDDP").disabled = false;
+    document.getElementById("btnCDE").disabled = false;
+    document.getElementById("btnDDI").disabled = false;
+    document.getElementById("btnChild").disabled = false;
     showStatus(`🔗 Événement lié enregistré: ${chosen}`, "success");
     showChildHint("⚠️ Événement lié sélectionné — cliquez sur Événement SAV pour l’envoyer");
+  };
+
+  document.getElementById("AnnuleEvt").onclick = () => {
+    document.getElementById("status").style.display = "none";
+    showStatus("");
+    popup.style.display = "none";
+    document.getElementById("btnSav").disabled = false;
+    document.getElementById("btnComm").disabled = false;
+    document.getElementById("btnDDP").disabled = false;
+    document.getElementById("btnCDE").disabled = false;
+    document.getElementById("btnDDI").disabled = false;
+    document.getElementById("btnChild").disabled = false;
+
   };
 
   showStatus(`🟢 ${parsed.count} événements récupérés`, "success");
@@ -301,6 +318,7 @@ async function loadChildEvents() {
 ====================== */
 
 async function send(type) {
+  document.getElementById("status").style.display = "block";
   if (!cachedPayload) return showStatus("⚠️ Aucun email prêt", "error");
 
   if (type === "1") showChildHint(""); // logique SAV
@@ -316,8 +334,8 @@ async function send(type) {
       });
     });
 
-    cachedPayload.evenement.type = type;          // 👍 type = 1 pour SAV
-    cachedPayload.evenement.evt_lie = cachedPayload.evenement.evt_lie || ""; // 👍 enfant si كاين
+    cachedPayload.evenement.type = type;
+    cachedPayload.evenement.evt_lie = cachedPayload.evenement.evt_lie || "";
 
     const emailBase64 = buildEmailBase64(item, body);
     cachedPayload.evenement.pj = emailBase64 || "";
