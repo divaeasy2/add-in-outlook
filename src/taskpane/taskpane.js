@@ -90,14 +90,14 @@ Office.onReady(() => {
   document.getElementById("cancelEvtLink").onclick = () => {
   cachedPayload.evenement.evt_lie = "";    
   document.getElementById("cancelEvtLink").style.display = "none";
+  ["btnComm","btnDDP","btnCDE","btnDDI","btnChild"].forEach(id => {
+    document.getElementById(id).disabled = false;
+    document.getElementById(id).style.display = "block";
+  });
 
   showStatus("🚫 Lien événement annulé — le SAV sera envoyé sans événement lié", "info");
   showChildHint("");
 };
-
-
-  document.getElementById("btnSav").disabled = true;
-  document.getElementById("btnComm").disabled = true;
 
   prepareEmail();
 });
@@ -293,9 +293,10 @@ async function loadChildEvents() {
 
   cachedPayload.evenement.evt_lie = chosen;
   popup.style.display = "none";
-
-  ["btnSav","btnComm","btnDDP","btnCDE","btnDDI","btnChild"].forEach(id => {
+  document.getElementById("btnSav").disabled = false;
+  ["btnComm","btnDDP","btnCDE","btnDDI","btnChild"].forEach(id => {
     document.getElementById(id).disabled = false;
+    document.getElementById(id).style.display = "none"
   });
 
   document.getElementById("cancelEvtLink").style.display = "inline-block";
