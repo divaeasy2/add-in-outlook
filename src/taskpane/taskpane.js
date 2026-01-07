@@ -1,103 +1,44 @@
-
-// Office.onReady(() => {
-//   const user = document.getElementById("user").innerText = Office.context.mailbox.userProfile.displayName
-//   const userEmail = document.getElementById("userEmail").innerText = Office.context.mailbox.userProfile.emailAddress
-//   // Hide sideload message
-//   const sideload = document.getElementById("sideload-msg");
-//   if (sideload) sideload.style.display = "none";
-
-//   // Show main app body
-//   const appBody = document.getElementById("app-body");
-//   if (appBody) appBody.style.display = "block";
-//   document.getElementById("btnTest").onclick = testEmail;
-// });
-
-// function testEmail() {
-//   const item = Office.context.mailbox.item;
-//   const subject = item.subject;
-//   const from = item.from?.emailAddress;
-
-//   const body = document.getElementById("body");
-//   if (body) body.style.display = "block";
-
-//   const resultJson = document.getElementById("resultJson");
-//   if (resultJson) resultJson.style.display = "block";
-
-//   const getCompanyName = () => {
-//     return from.split('@')[1].split('.')[0]
-//     // return from.slice(from.indexOf('@')+1, from.indexOf('.'))
-//   }
-
-//   item.body.getAsync(
-//     Office.CoercionType.Text,
-//     function (result){
-//       if(result.status===Office.AsyncResultStatus.Succeeded) {
-//         body.innerText = result.value
-
-//         const resultJSON = {
-//           evenement:{
-//             codeevt : 1102,
-//             tiers : item.sender.displayName,
-//             company : getCompanyName(),
-//             contact : from,
-//             lib: subject,
-//           }
-//         }
-
-//      fetch('https://remote.divy-si.fr:8443/DhsDivaltoServiceDivaApiRest/api/v1/Webhook/5DED7C6421BE4694A7D992BE08D93D2F0278797F',{
-//           method: 'POST',
-//           headers: {
-//             "Content-Type": "Application/json"
-//           },
-//           body: JSON.stringify(resultJSON)
-//         }
-//         )
-
-//         resultJson.innerText = JSON.stringify(resultJSON, null, 2)
-
-//       } else{
-//         body.innerText = "Cannot read the content"
-//       }
-//     }
-//   )
-
-//   const result = document.getElementById("result");
-//   if (result) result.style.display = "block";
-//   result.textContent =
-//     `Subject: ${subject}\nFrom: ${from}`;
-// }
-
-
 /* global Office */
 
 let cachedPayload = null;
 const MAX_EMAIL_SIZE = 500 * 1024; // 500 KB
+let statusTimeoutId = null;
+let allEvents = []; // Store all events for filtering
 
 Office.onReady(() => {
-  document.getElementById("user").innerText =
-    Office.context.mailbox.userProfile.displayName;
+  const displayName = Office.context.mailbox.userProfile.displayName;
+  document.getElementById("user").innerText = displayName;
 
   document.getElementById("userEmail").innerText =
     Office.context.mailbox.userProfile.emailAddress;
     
-  document.getElementById("btnSav").onclick = () => send("1");
+  // Set avatar with user initials
+  setAvatarInitials(displayName);
+    
+  // SAV event - show options modal
+  document.getElementById("btnSav").onclick = () => showSavOptions();
+  
+  // Options modal buttons
+  document.getElementById("btnSavNew").onclick = () => sendSavNew();
+  document.getElementById("btnSavLinked").onclick = () => loadChildEventsForSav();
+  document.getElementById("btnSavCancel").onclick = () => hideSavOptions();
+  
+  // Other event types
   document.getElementById("btnComm").onclick = () => send("2");
   document.getElementById("btnDDP").onclick = () => send("3");
   document.getElementById("btnCDE").onclick = () => send("4");
   document.getElementById("btnDDI").onclick = () => send("5");
-  document.getElementById("btnChild").onclick = loadChildEvents;
 
-  document.getElementById("cancelEvtLink").onclick = () => {
-  cachedPayload.evenement.evt_lie = "";    
-  document.getElementById("cancelEvtLink").style.display = "none";
-  ["btnComm","btnDDP","btnCDE","btnDDI","btnChild"].forEach(id => {
-    document.getElementById(id).disabled = false;
-    document.getElementById(id).style.display = "block";
-  });
-
-  showStatus("🚫 Lien événement annulé — le SAV sera envoyé sans événement lié", "info");
-  showChildHint("");
-};
+  // Child events modal buttons
+  document.getElementById("confirmEvt").onclick = () => confirmLinkedEvent();
+  document.getElementById("AnnuleEvt").onclick = () => returnFromLinkedEvents();
+  
+  // Search input for events
+  document.getElementById("eventSearchInput").addEventListener("input", (e) => filterEvents(e.target.value));
+  
+  // Confirmation modal buttons
+  document.getElementById("btnConfirmLinked").onclick = () => sendWithLinkedEvent();
+  document.getElementById("btnCancelLinked").onclick = () => returnFromConfirmation();
 
   prepareEmail();
 });
@@ -106,11 +47,43 @@ Office.onReady(() => {
    STATUS
 ====================== */
 
+function setAvatarInitials(displayName) {
+  const avatar = document.getElementById("avatar");
+  if (!displayName) {
+    avatar.innerText = "?";
+    return;
+  }
+  
+  const names = displayName.trim().split(/\s+/);
+  let initials = "";
+  
+  if (names.length >= 2) {
+    // Get first letter of first name and last name
+    initials = (names[0][0] + names[names.length - 1][0]).toUpperCase();
+  } else if (names.length === 1) {
+    // Single name: show first letter twice or just once
+    initials = names[0][0].toUpperCase();
+  }
+  
+  avatar.innerText = initials;
+}
+
 function showStatus(msg, type = "info") {
   const el = document.getElementById("status");
   el.className = `status ${type}`;
   el.innerText = msg;
   el.style.display = "block";
+  
+  // Clear previous timeout if exists
+  if (statusTimeoutId) {
+    clearTimeout(statusTimeoutId);
+  }
+  
+  // Auto-hide status message after 3.5 seconds
+  statusTimeoutId = setTimeout(() => {
+    el.style.display = "none";
+    statusTimeoutId = null;
+  }, 3500);
 }
 
 function showChildHint(msg = "") {
@@ -135,7 +108,7 @@ function prepareEmail() {
 
   item.body.getAsync(Office.CoercionType.Text, (res) => {
     if (res.status !== Office.AsyncResultStatus.Succeeded) {
-      showStatus("❌ Impossible de lire l’email", "error");
+      showStatus("❌ Impossible de lire l'email", "error");
       return;
     }
 
@@ -223,7 +196,7 @@ function parseWeirdApiResponse(raw) {
     n3.evenements ||
     (n3.response && n3.response.Evenements);
 
-  if (!events) return { ok:false, error:"❌ Aucun événement trouvé", json:n3 };
+  if (!events) return { ok:false, error:"❌ Aucun évènement trouvé", json:n3 };
 
   return { ok: true, count: events.length, events };
 }
@@ -236,14 +209,29 @@ function debugLog(msg){
 }
 
 /* ======================
-   LOAD CHILD EVENTS
+   SAV EVENT WORKFLOW
 ====================== */
 
-async function loadChildEvents() {
+function showSavOptions() {
+  document.getElementById("savOptionsModal").style.display = "block";
+}
+
+function hideSavOptions() {
+  document.getElementById("savOptionsModal").style.display = "none";
+  showStatus("");
+  document.getElementById("status").style.display = "none";
+}
+
+async function sendSavNew() {
+  hideSavOptions();
+  await send("1");
+}
+
+async function loadChildEventsForSav() {
   document.getElementById("status").style.display = "block";
   if (!cachedPayload) return showStatus("⚠️ Aucun email prêt", "error");
 
-  showStatus("⏳ Vérification des événements ...", "info");
+  showStatus("⏳ Vérification des évènements ...", "info");
 
   const payload = {
     evenement: {
@@ -254,7 +242,7 @@ async function loadChildEvents() {
 
   const res = await fetch("https://maisondelarose.org/proxy/proxy_child.php", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json; charset=UTF-8" },
     body: JSON.stringify(payload)
   }).then(r => r.text()).catch(() => null);
 
@@ -264,65 +252,125 @@ async function loadChildEvents() {
   const popup = document.getElementById("childPopup");
   const select = document.getElementById("childSelect");
   const evtCount = document.getElementById("evtCount");
+  const searchInput = document.getElementById("eventSearchInput");
 
   if (!parsed.ok) {
     popup.style.display = "none";
     return showStatus("🔴 " + parsed.error, "error");
   }
 
+  // Store events for filtering
+  allEvents = parsed.events;
+
+  // Hide options modal and show child events popup
+  document.getElementById("savOptionsModal").style.display = "none";
   popup.style.display = "block";
-  document.getElementById("btnSav").disabled = true;
-  document.getElementById("btnComm").disabled = true;
-  document.getElementById("btnDDP").disabled = true;
-  document.getElementById("btnCDE").disabled = true;
-  document.getElementById("btnDDI").disabled = true;
-  document.getElementById("btnChild").disabled = true;
-  select.innerHTML = `<option value="">-- Choisissez un événement --</option>`;
+  
+  // Clear and rebuild select with proper encoding
+  select.innerHTML = `<option value="">-- Choisissez un évènement --</option>`;
   parsed.events.forEach(evt => {
     const opt = document.createElement("option");
     opt.value = evt.evtNo;
-    opt.textContent = `${evt.evtNo} - ${evt.lib || "(sans lib)"}`;
+    // Ensure proper encoding of event text
+    const eventCode = String(evt.evtNo || "");
+    const eventLib = String(evt.lib || "(sans lib)");
+    opt.textContent = `${eventCode} - ${eventLib}`;
     select.appendChild(opt);
   });
 
-  evtCount.innerText = `${parsed.count} événements trouvés`;
-
-  document.getElementById("confirmEvt").onclick = () => {
-  const chosen = select.value;
-  if (!chosen) return showStatus("⚠️ Sélectionnez un événement", "error");
-
-  cachedPayload.evenement.evt_lie = chosen;
-  popup.style.display = "none";
-  document.getElementById("btnSav").disabled = false;
-  ["btnComm","btnDDP","btnCDE","btnDDI","btnChild"].forEach(id => {
-    document.getElementById(id).disabled = false;
-    document.getElementById(id).style.display = "none"
-  });
-
-  document.getElementById("cancelEvtLink").style.display = "inline-block";
-
-  showStatus(`🔗 Événement lié enregistré: ${chosen}`, "success");
-  showChildHint("⚠️ Événement lié sélectionné — cliquez sur Événement SAV pour l’envoyer");
-};
-
-
-  document.getElementById("AnnuleEvt").onclick = () => {
-    showStatus("");
-    document.getElementById("status").style.display = "none";
-    popup.style.display = "none";
-    document.getElementById("btnSav").disabled = false;
-    document.getElementById("btnComm").disabled = false;
-    document.getElementById("btnDDP").disabled = false;
-    document.getElementById("btnCDE").disabled = false;
-    document.getElementById("btnDDI").disabled = false;
-    document.getElementById("btnChild").disabled = false;
-
-  };
-
-  showStatus(`🟢 ${parsed.count} événements récupérés`, "success");
+  evtCount.innerText = `${parsed.count} évènements trouvés`;
+  
+  // Show search input if events exist
+  if (parsed.count > 0) {
+    searchInput.style.display = "block";
+    searchInput.value = "";
+  } else {
+    searchInput.style.display = "none";
+  }
+  
+  showStatus(`🟢 ${parsed.count} évènements récupérés`, "success");
 }
 
+function filterEvents(searchTerm) {
+  const select = document.getElementById("childSelect");
+  const searchValue = searchTerm.toLowerCase().trim();
+  
+  // Clear current options (except placeholder)
+  select.innerHTML = `<option value="">-- Choisissez un évènement --</option>`;
+  
+  // Filter events
+  const filteredEvents = allEvents.filter(evt => {
+    const eventCode = String(evt.evtNo || "").toLowerCase();
+    const eventLib = String(evt.lib || "").toLowerCase();
+    return eventCode.includes(searchValue) || eventLib.includes(searchValue);
+  });
+  
+  // Add filtered events to select
+  filteredEvents.forEach(evt => {
+    const opt = document.createElement("option");
+    opt.value = evt.evtNo;
+    const eventCode = String(evt.evtNo || "");
+    const eventLib = String(evt.lib || "(sans lib)");
+    opt.textContent = `${eventCode} - ${eventLib}`;
+    select.appendChild(opt);
+  });
+  
+  // Update count
+  const evtCount = document.getElementById("evtCount");
+  if (searchValue) {
+    evtCount.innerText = `${filteredEvents.length} évènements trouvés`;
+  } else {
+    evtCount.innerText = `${allEvents.length} évènements trouvés`;
+  }
+}
 
+function confirmLinkedEvent() {
+  const select = document.getElementById("childSelect");
+  const chosen = select.value;
+  
+  if (!chosen) {
+    return showStatus("⚠️ Sélectionnez un évènement", "error");
+  }
+
+  // Store the selected event
+  cachedPayload.evenement.evt_lie = chosen;
+  
+  // Get the event details for display
+  const selectedOption = select.options[select.selectedIndex];
+  const eventText = selectedOption.textContent;
+  
+  // Hide child events popup
+  document.getElementById("childPopup").style.display = "none";
+  
+  // Show confirmation modal
+  document.getElementById("confirmLinkedText").innerText = 
+    `Confirmer l'évènement:\n${eventText}`;
+  document.getElementById("confirmLinkedModal").style.display = "block";
+}
+
+async function sendWithLinkedEvent() {
+  document.getElementById("confirmLinkedModal").style.display = "none";
+  await send("1");
+}
+
+function returnFromConfirmation() {
+  document.getElementById("confirmLinkedModal").style.display = "none";
+  cachedPayload.evenement.evt_lie = "";
+  
+  // Show child events popup again
+  document.getElementById("childPopup").style.display = "block";
+  showStatus("⏳ Retour à la sélection...", "info");
+}
+
+function returnFromLinkedEvents() {
+  document.getElementById("childPopup").style.display = "none";
+  cachedPayload.evenement.evt_lie = "";
+  
+  // Show options modal again
+  document.getElementById("savOptionsModal").style.display = "block";
+  showStatus("");
+  document.getElementById("status").style.display = "none";
+}
 
 
 /* ======================
@@ -332,8 +380,6 @@ async function loadChildEvents() {
 async function send(type) {
   document.getElementById("status").style.display = "block";
   if (!cachedPayload) return showStatus("⚠️ Aucun email prêt", "error");
-
-  if (type === "1") showChildHint(""); // logique SAV
 
   try {
     const item = Office.context.mailbox.item;
