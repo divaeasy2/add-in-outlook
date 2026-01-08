@@ -118,10 +118,13 @@ function prepareEmail() {
         utilisateur: user,
         tiers: item.from?.emailAddress || "",
         lib: item.subject || "",
+        messageId: "",
         pj: "",
         evt_lie: ""
       }
     };
+
+    debugLog("Payload initialized with messageId: " + item.itemId);
 
     document.getElementById("btnSav").disabled = false;
     document.getElementById("btnComm").disabled = false;
@@ -131,27 +134,291 @@ function prepareEmail() {
 }
 
 /* ======================
-   BUILD EMAIL (.eml)
+   EMAIL WITH OFFICE API
 ====================== */
 
-function buildEmailBase64(item, bodyText) {
-  const bodyBase64 = btoa(unescape(encodeURIComponent(bodyText)));
+async function getEmailWithOfficeApi() {
+  return new Promise((resolve) => {
+    const item = Office.context.mailbox.item;
+    
+    debugLog("📧 MessageId: " + item.itemId);
+    
+    // Try to get callback token (for OAuth scenarios)
+    if (item.getCallbackTokenAsync) {
+      item.getCallbackTokenAsync({ isRest: true }, (result) => {
+        if (result.status === Office.AsyncResultStatus.Succeeded) {
+          debugLog("✅ Token obtained");
+          resolve({
+            success: true,
+            token: result.value,
+            messageId: item.itemId,
+            emailAddress: Office.context.mailbox.userProfile.emailAddress
+          });
+        } else {
+          debugLog("⚠️ Token error: " + result.error.message);
+          resolve({
+            success: false,
+            messageId: item.itemId
+          });
+        }
+      });
+    } else {
+      debugLog("⚠️ Token error: t.getCallbackTokenAsync is not a function");
+      resolve({
+        success: false,
+        messageId: item.itemId
+      });
+    }
+  });
+}
 
-  const eml =
-`From: ${item.from?.emailAddress || ""}
-To: ${Office.context.mailbox.userProfile.emailAddress}
-Subject: ${item.subject || ""}
-Date: ${new Date().toUTCString()}
-MIME-Version: 1.0
-Content-Type: text/plain; charset=UTF-8
-Content-Transfer-Encoding: base64
+/* ======================
+   EMAIL RETRIEVAL WITH ATTACHMENTS
+====================== */
 
-${bodyBase64}`;
+async function getEmailContent() {
+  return new Promise((resolve) => {
+    const item = Office.context.mailbox.item;
+    let emailData = {
+      subject: item.subject || "",
+      from: item.from?.emailAddress || "",
+      to: Office.context.mailbox.userProfile.emailAddress || "",
+      date: new Date().toUTCString(),
+      body: "",
+      bodyType: "text",
+      attachments: []
+    };
+
+    let bodyLoaded = false;
+    let attachmentsLoaded = false;
+
+    function checkComplete() {
+      if (bodyLoaded && attachmentsLoaded) {
+        resolve(emailData);
+      }
+    }
+
+    // Try to get HTML body first (preserves images and formatting)
+    item.body.getAsync(Office.CoercionType.Html, (res) => {
+      if (res.status === Office.AsyncResultStatus.Succeeded && res.value) {
+        emailData.body = res.value;
+        emailData.bodyType = "html";
+        debugLog("✅ Email body retrieved (HTML)");
+        bodyLoaded = true;
+      } else {
+        // Fallback to plain text
+        item.body.getAsync(Office.CoercionType.Text, (textRes) => {
+          if (textRes.status === Office.AsyncResultStatus.Succeeded) {
+            emailData.body = textRes.value;
+            emailData.bodyType = "text";
+            debugLog("✅ Email body retrieved (Text - fallback)");
+          } else {
+            debugLog("⚠️ Body retrieval failed");
+            emailData.body = "[Unable to retrieve body]";
+          }
+          bodyLoaded = true;
+          checkComplete();
+        });
+        return;
+      }
+      bodyLoaded = true;
+      checkComplete();
+    });
+
+    // Get attachments
+    if (item.attachments && item.attachments.length > 0) {
+      debugLog(`📎 Found ${item.attachments.length} attachment(s)`);
+      let loadedCount = 0;
+      
+      item.attachments.forEach((att, idx) => {
+        try {
+          // Get attachment data
+          item.getAttachmentContentAsync(att.id, (result) => {
+            debugLog(`📥 Processing attachment: ${att.name}`);
+            
+            if (result.status === Office.AsyncResultStatus.Succeeded) {
+              try {
+                let binaryData = result.value;
+                
+                if (!binaryData) {
+                  debugLog(`❌ No data in result.value for ${att.name}`);
+                  loadedCount++;
+                  if (loadedCount === item.attachments.length) {
+                    attachmentsLoaded = true;
+                    checkComplete();
+                  }
+                  return;
+                }
+                
+                debugLog(`   - Data type: ${typeof binaryData} (${binaryData instanceof ArrayBuffer ? 'ArrayBuffer' : 'other'})`);
+                
+                let base64Data = '';
+                let dataLen = 0;
+                
+                // Convert binary to base64
+                if (binaryData instanceof ArrayBuffer) {
+                  dataLen = binaryData.byteLength;
+                  debugLog(`   - Size: ${dataLen} bytes`);
+                  const uint8 = new Uint8Array(binaryData);
+                  let binaryStr = '';
+                  for (let i = 0; i < uint8.length; i++) {
+                    binaryStr += String.fromCharCode(uint8[i]);
+                  }
+                  base64Data = btoa(binaryStr);
+                  debugLog(`✅ Attachment loaded: ${att.name} (${dataLen} bytes → ${base64Data.length} base64)`);
+                } else if (typeof binaryData === 'string') {
+                  // Already base64
+                  base64Data = binaryData;
+                  dataLen = binaryData.length;
+                  debugLog(`✅ Attachment loaded: ${att.name} (${dataLen} chars base64)`);
+                } else if (typeof binaryData === 'object') {
+                  // Outlook Desktop might return object with nested data
+                  debugLog(`   - Checking object properties...`);
+                  
+                  // Check for common data properties
+                  let extractedData = null;
+                  if (binaryData.content) {
+                    extractedData = binaryData.content;
+                    debugLog(`   - Found .content property`);
+                  } else if (binaryData.data) {
+                    extractedData = binaryData.data;
+                    debugLog(`   - Found .data property`);
+                  } else if (binaryData.value) {
+                    extractedData = binaryData.value;
+                    debugLog(`   - Found .value property`);
+                  } else {
+                    extractedData = JSON.stringify(binaryData);
+                    debugLog(`   - Using stringified object`);
+                  }
+                  
+                  if (extractedData instanceof ArrayBuffer) {
+                    dataLen = extractedData.byteLength;
+                    const uint8 = new Uint8Array(extractedData);
+                    let binaryStr = '';
+                    for (let i = 0; i < uint8.length; i++) {
+                      binaryStr += String.fromCharCode(uint8[i]);
+                    }
+                    base64Data = btoa(binaryStr);
+                    debugLog(`✅ Attachment loaded: ${att.name} (${dataLen} bytes → ${base64Data.length} base64)`);
+                  } else if (typeof extractedData === 'string') {
+                    base64Data = extractedData;
+                    dataLen = extractedData.length;
+                    debugLog(`✅ Attachment loaded: ${att.name} (string: ${dataLen} chars)`);
+                  }
+                }
+                
+                if (base64Data && base64Data.length > 0) {
+                  const attData = {
+                    name: att.name || `attachment_${idx}`,
+                    contentType: att.contentType || "application/octet-stream",
+                    data: base64Data
+                  };
+                  emailData.attachments.push(attData);
+                  debugLog(`✅ Attachment added to email data`);
+                } else {
+                  debugLog(`⚠️ Base64 data is empty for ${att.name}`);
+                }
+              } catch (encodeErr) {
+                debugLog(`❌ Failed to encode attachment ${att.name}: ${encodeErr.message}`);
+              }
+            } else {
+              debugLog(`⚠️ Failed to load attachment: ${att.name}`);
+              if (result.error) debugLog(`   Error: ${result.error.message}`);
+            }
+            
+            loadedCount++;
+            if (loadedCount === item.attachments.length) {
+              attachmentsLoaded = true;
+              checkComplete();
+            }
+          });
+        } catch (e) {
+          debugLog(`❌ Error processing attachment ${att.name}: ${e.message}`);
+          loadedCount++;
+          if (loadedCount === item.attachments.length) {
+            attachmentsLoaded = true;
+            checkComplete();
+          }
+        }
+      });
+    } else {
+      debugLog("📎 No attachments");
+      attachmentsLoaded = true;
+      checkComplete();
+    }
+  });
+}
+
+/* ======================
+   UTILITY: Wrap base64 at 76 chars per line (RFC 2045)
+====================== */
+function wrapBase64(base64String) {
+  let result = '';
+  for (let i = 0; i < base64String.length; i += 76) {
+    result += base64String.substring(i, i + 76) + '\r\n';
+  }
+  return result;
+}
+
+/* ======================
+   BUILD EMAIL (.eml) WITH ATTACHMENTS
+====================== */
+
+function buildEmailBase64(item, emailContent) {
+  const isHtml = emailContent.bodyType === "html";
+  const boundary = "----=_Part_" + Math.random().toString(36).substring(2, 15);
+  
+  // Use CRLF line endings for MIME compliance
+  let eml = `From: ${item.from?.emailAddress || ""}\r\n`;
+  eml += `To: ${Office.context.mailbox.userProfile.emailAddress}\r\n`;
+  eml += `Subject: ${emailContent.subject || ""}\r\n`;
+  eml += `Date: ${emailContent.date}\r\n`;
+  eml += `MIME-Version: 1.0\r\n`;
+
+  // If there are attachments, use multipart format
+  if (emailContent.attachments && emailContent.attachments.length > 0) {
+    eml += `Content-Type: multipart/mixed; boundary="${boundary}"\r\n`;
+    eml += `\r\n--${boundary}\r\n`;
+    eml += `Content-Type: ${isHtml ? 'text/html' : 'text/plain'}; charset=UTF-8\r\n`;
+    eml += `Content-Transfer-Encoding: quoted-printable\r\n\r\n`;
+    eml += emailContent.body;
+    
+    // Add each attachment
+    emailContent.attachments.forEach((att) => {
+      eml += `\r\n\r\n--${boundary}\r\n`;
+      eml += `Content-Type: ${att.contentType}\r\n`;
+      eml += `Content-Transfer-Encoding: base64\r\n`;
+      eml += `Content-Disposition: attachment; filename="${att.name}"\r\n\r\n`;
+      
+      // att.data should already be base64 string from our encoding above
+      if (typeof att.data === 'string' && att.data.length > 0) {
+        // Data is already base64, just wrap it at 76 chars per line
+        eml += wrapBase64(att.data);
+      } else {
+        debugLog(`⚠️ Attachment ${att.name} has no data`);
+      }
+    });
+    
+    eml += `\r\n\r\n--${boundary}--\r\n`;
+  } else {
+    // Simple single-part email
+    eml += `Content-Type: ${isHtml ? 'text/html' : 'text/plain'}; charset=UTF-8\r\n`;
+    eml += `Content-Transfer-Encoding: quoted-printable\r\n\r\n`;
+    eml += emailContent.body;
+  }
 
   const size = new Blob([eml]).size;
-  if (size > MAX_EMAIL_SIZE) return null;
+  if (size > MAX_EMAIL_SIZE) {
+    debugLog(`⚠️ Email size: ${(size / 1024 / 1024).toFixed(2)}MB exceeds limit`);
+    return null;
+  }
 
-  return btoa(unescape(encodeURIComponent(eml)));
+  try {
+    return btoa(unescape(encodeURIComponent(eml)));
+  } catch (e) {
+    debugLog(`❌ Error encoding email: ${e.message}`);
+    return null;
+  }
 }
 
 
@@ -384,20 +651,54 @@ async function send(type) {
   try {
     const item = Office.context.mailbox.item;
 
-    showStatus("⌛ Lecture...", "info");
+    showStatus("⌛ Récupération des données...", "info");
 
-    const body = await new Promise((resolve, reject) => {
-      item.body.getAsync(Office.CoercionType.Text, r => {
-        r.status === Office.AsyncResultStatus.Succeeded ? resolve(r.value) : reject();
+    // Step 1: Get Office API messageId
+    debugLog("Step 1: Getting callback token...");
+    const tokenData = await getEmailWithOfficeApi();
+    
+    if (tokenData.success) {
+      debugLog(`✅ Token obtained for user: ${tokenData.emailAddress}`);
+      debugLog(`Message ID: ${tokenData.messageId}`);
+      cachedPayload.evenement.messageId = tokenData.messageId;
+    } else {
+      debugLog(`⚠️ No token, using Office API fallback`);
+      cachedPayload.evenement.messageId = item.itemId;
+    }
+
+    // Step 2: Get email content with attachments
+    debugLog("Step 2: Getting email content...");
+    const emailContent = await getEmailContent();
+    
+    debugLog(`✅ Email from: ${emailContent.from}`);
+    debugLog(`📧 Subject: ${emailContent.subject}`);
+    debugLog(`📄 Body type: ${emailContent.bodyType} (${emailContent.bodyType === "html" ? "images/formatting preserved" : "text only"})`);
+    if (emailContent.attachments && emailContent.attachments.length > 0) {
+      debugLog(`📎 ${emailContent.attachments.length} attachment(s):`);
+      emailContent.attachments.forEach(att => {
+        debugLog(`   - ${att.name} (${att.contentType})`);
       });
-    });
+    } else {
+      debugLog(`📎 No attachments`);
+    }
+
+    // Step 3: Build email in base64
+    showStatus("⌛ Encodage du message...", "info");
+    const emailBase64 = buildEmailBase64(item, emailContent);
+    
+    if (!emailBase64) {
+      debugLog("⚠️ Email too large, will send without attachment");
+      cachedPayload.evenement.pj = "";
+    } else {
+      debugLog(`✅ Email encoded: ${emailBase64.length} bytes`);
+      cachedPayload.evenement.pj = emailBase64;
+    }
 
     cachedPayload.evenement.type = type;
     cachedPayload.evenement.evt_lie = cachedPayload.evenement.evt_lie || "";
 
-    const emailBase64 = buildEmailBase64(item, body);
-    cachedPayload.evenement.pj = emailBase64 || "";
-
+    // Step 4: Send to proxy
+    debugLog(`📤 Sending to Divalto (type: ${type})...`);
     showStatus("🚀 Envoi...", "info");
 
     const res = await fetch("https://maisondelarose.org/proxy/proxy.php", {
@@ -406,20 +707,66 @@ async function send(type) {
       body: JSON.stringify(cachedPayload)
     });
 
+    // Step 5: Parse response
+    debugLog(`Response status: ${res.status}`);
     const text = await res.text();
-    const parsed = JSON.parse(text);
-    const resultStr = parsed?.json?.result || "";
-
-    const code = resultStr.match(/"resultcode"\s*:\s*"(\d+)"/)?.[1];
-    const evt = resultStr.match(/"EvtNo"\s*:\s*"([^"]+)"/)?.[1]?.trim();
-
-    if (code === "0") {
-      showStatus(`🎉 SUCCESS — Code ${evt}`, "success");
-    } else {
-      showStatus(`❌ Erreur`, "error");
+    debugLog(`Response text length: ${text.length} bytes`);
+    debugLog(`First 500 chars: ${text.substring(0, 500)}`);
+    
+    let parsed;
+    try {
+      parsed = JSON.parse(text);
+      debugLog(`✅ JSON parsed successfully`);
+    } catch (e) {
+      debugLog(`❌ JSON parse error: ${e.message}`);
+      showStatus("⚠️ Format de réponse inattendu", "warning");
+      return;
     }
 
-  } catch {
+    debugLog(`Full response: ${JSON.stringify(parsed)}`);
+    
+    // Parse Divalto response structure
+    let code = null;
+    let evt = null;
+    
+    try {
+      let resultStr = parsed?.json?.result || "";
+      debugLog(`Raw result string: ${resultStr}`);
+      
+      if (!resultStr) {
+        throw new Error("No result string found");
+      }
+      
+      // Unescape the string
+      let unescaped = resultStr.replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+      debugLog(`Unescaped: ${unescaped}`);
+      
+      // Extract using regex
+      const codeMatch = unescaped.match(/"resultcode"\s*:\s*"(\d+)"/);
+      const evtMatch = unescaped.match(/"EvtNo"\s*:\s*"([^"]+)"/);
+      
+      code = codeMatch ? codeMatch[1] : null;
+      evt = evtMatch ? evtMatch[1].trim() : null;
+      
+      debugLog(`Extracted - Code: ${code}, Event: ${evt}`);
+      
+    } catch (e) {
+      debugLog(`❌ Parse error: ${e.message}`);
+    }
+
+    if (code === "0" && evt) {
+      debugLog(`✅ SUCCESS - Event: ${evt}`);
+      showStatus(`🎉 Succès — Évènement: ${evt}`, "success");
+    } else if (code && code !== "0") {
+      debugLog(`❌ API Error - Code: ${code}`);
+      showStatus(`❌ Erreur API (Code: ${code})`, "error");
+    } else {
+      debugLog(`⚠️ Could not extract code or event`);
+      showStatus(`⚠️ Réponse inattendue`, "warning");
+    }
+
+  } catch (err) {
+    debugLog("❌ Fetch error: " + err.message);
     showStatus("❌ Erreur de communication", "error");
   }
 }
