@@ -115,10 +115,16 @@
 
 
 
-    <!-- Loading Animation -->
+    <!-- Loading Animation with Progress Bar -->
     <div id="loadingOverlay" class="loading-overlay" style="display:none;">
-      <div class="loading-spinner"></div>
-      <div class="loading-text">Traitement en cours...</div>
+      <div class="loading-container">
+        <div class="loading-spinner"></div>
+        <div class="loading-text" id="loadingText">Traitement en cours...</div>
+        <div class="progress-bar">
+          <div class="progress-fill" id="progressFill"></div>
+        </div>
+        <div class="progress-step" id="progressStep"></div>
+      </div>
     </div>
 
     <div id="status" class="status"></div>

@@ -1,7 +1,7 @@
 /* global Office */
 
 let cachedPayload = null;
-const MAX_EMAIL_SIZE = 500 * 1024; // 500 KB
+const MAX_EMAIL_SIZE = 10 * 1024 * 1024; // 10 MB
 let statusTimeoutId = null;
 let allEvents = []; // Store all events for filtering
 
@@ -107,6 +107,22 @@ function hideLoading() {
       btn.disabled = false;
       btn.style.opacity = "1";
     });
+  }
+}
+
+function updateProgress(percent, stepText) {
+  const progressFill = document.getElementById("progressFill");
+  const progressStep = document.getElementById("progressStep");
+  const loadingText = document.getElementById("loadingText");
+  
+  if (progressFill) {
+    progressFill.style.width = percent + "%";
+  }
+  if (progressStep) {
+    progressStep.innerText = stepText || "";
+  }
+  if (loadingText) {
+    loadingText.innerText = "Traitement en cours...";
   }
 }
 
@@ -400,6 +416,29 @@ async function getEmailContent() {
             
             loadedCount++;
             if (loadedCount === item.attachments.length) {
+              // Deduplicate attachments by name + content to reduce payload size
+              const seenAttachments = new Map();
+              const uniqueAttachments = [];
+              
+              emailData.attachments.forEach(att => {
+                // Create a hash key from name and first 100 chars of data
+                const key = att.name + '_' + att.data.substring(0, 100);
+                
+                if (!seenAttachments.has(key)) {
+                  seenAttachments.set(key, true);
+                  uniqueAttachments.push(att);
+                  debugLog(`✅ Keeping: ${att.name}`);
+                } else {
+                  debugLog(`⏭️ Skipping duplicate: ${att.name}`);
+                }
+              });
+              
+              const removed = emailData.attachments.length - uniqueAttachments.length;
+              if (removed > 0) {
+                debugLog(`✅ Deduplication: Removed ${removed} duplicate(s), kept ${uniqueAttachments.length}`);
+              }
+              
+              emailData.attachments = uniqueAttachments;
               attachmentsLoaded = true;
               checkComplete();
             }
@@ -425,11 +464,11 @@ async function getEmailContent() {
    UTILITY: Wrap base64 at 76 chars per line (RFC 2045)
 ====================== */
 function wrapBase64(base64String) {
-  let result = '';
+  const lines = [];
   for (let i = 0; i < base64String.length; i += 76) {
-    result += base64String.substring(i, i + 76) + '\r\n';
+    lines.push(base64String.substring(i, i + 76));
   }
-  return result;
+  return lines.join('\r\n') + '\r\n';
 }
 
 /* ======================
@@ -440,44 +479,57 @@ function buildEmailBase64(item, emailContent) {
   const isHtml = emailContent.bodyType === "html";
   const boundary = "----=_Part_" + Math.random().toString(36).substring(2, 15);
   
-  // Use CRLF line endings for MIME compliance
-  let eml = `From: ${item.from?.emailAddress || ""}\r\n`;
-  eml += `To: ${Office.context.mailbox.userProfile.emailAddress}\r\n`;
-  eml += `Subject: ${emailContent.subject || ""}\r\n`;
-  eml += `Date: ${emailContent.date}\r\n`;
-  eml += `MIME-Version: 1.0\r\n`;
+  // Use array to collect parts - much faster than string concatenation for large payloads
+  const parts = [];
+  
+  // Headers
+  parts.push(`From: ${item.from?.emailAddress || ""}`);
+  parts.push(`To: ${Office.context.mailbox.userProfile.emailAddress}`);
+  parts.push(`Subject: ${emailContent.subject || ""}`);
+  parts.push(`Date: ${emailContent.date}`);
+  parts.push(`MIME-Version: 1.0`);
 
   // If there are attachments, use multipart format
   if (emailContent.attachments && emailContent.attachments.length > 0) {
-    eml += `Content-Type: multipart/mixed; boundary="${boundary}"\r\n`;
-    eml += `\r\n--${boundary}\r\n`;
-    eml += `Content-Type: ${isHtml ? 'text/html' : 'text/plain'}; charset=UTF-8\r\n`;
-    eml += `Content-Transfer-Encoding: quoted-printable\r\n\r\n`;
-    eml += emailContent.body;
+    parts.push(`Content-Type: multipart/mixed; boundary="${boundary}"`);
+    parts.push('');
+    parts.push(`--${boundary}`);
+    parts.push(`Content-Type: ${isHtml ? 'text/html' : 'text/plain'}; charset=UTF-8`);
+    parts.push(`Content-Transfer-Encoding: quoted-printable`);
+    parts.push('');
+    parts.push(emailContent.body);
     
     // Add each attachment
     emailContent.attachments.forEach((att) => {
-      eml += `\r\n\r\n--${boundary}\r\n`;
-      eml += `Content-Type: ${att.contentType}\r\n`;
-      eml += `Content-Transfer-Encoding: base64\r\n`;
-      eml += `Content-Disposition: attachment; filename="${att.name}"\r\n\r\n`;
+      parts.push('');
+      parts.push(`--${boundary}`);
+      parts.push(`Content-Type: ${att.contentType}`);
+      parts.push(`Content-Transfer-Encoding: base64`);
+      parts.push(`Content-Disposition: attachment; filename="${att.name}"`);
+      parts.push('');
       
       // att.data should already be base64 string from our encoding above
       if (typeof att.data === 'string' && att.data.length > 0) {
-        // Data is already base64, just wrap it at 76 chars per line
-        eml += wrapBase64(att.data);
+        // Data is already base64, wrap it at 76 chars per line
+        const wrapped = wrapBase64(att.data).trimEnd(); // Remove trailing CRLF that wrapBase64 adds
+        parts.push(wrapped);
       } else {
         debugLog(`⚠️ Attachment ${att.name} has no data`);
       }
     });
     
-    eml += `\r\n\r\n--${boundary}--\r\n`;
+    parts.push('');
+    parts.push(`--${boundary}--`);
   } else {
     // Simple single-part email
-    eml += `Content-Type: ${isHtml ? 'text/html' : 'text/plain'}; charset=UTF-8\r\n`;
-    eml += `Content-Transfer-Encoding: quoted-printable\r\n\r\n`;
-    eml += emailContent.body;
+    parts.push(`Content-Type: ${isHtml ? 'text/html' : 'text/plain'}; charset=UTF-8`);
+    parts.push(`Content-Transfer-Encoding: quoted-printable`);
+    parts.push('');
+    parts.push(emailContent.body);
   }
+  
+  // Join all parts with CRLF line endings
+  const eml = parts.join('\r\n');
 
   const size = new Blob([eml]).size;
   if (size > MAX_EMAIL_SIZE) {
@@ -634,7 +686,7 @@ function filterEvents(searchTerm) {
   const select = document.getElementById("childSelect");
   const searchValue = searchTerm.toLowerCase().trim();
   
-  // Clear current options (except placeholder)
+  // Clear current options (except placeh older)
   select.innerHTML = `<option value="">-- Choisissez un évènement --</option>`;
   
   // Filter events
@@ -721,6 +773,7 @@ async function send(type) {
   if (!cachedPayload) return showStatus("⚠️ Aucun email prêt", "error");
 
   showLoading(); // Start loading animation
+  updateProgress(10, "Initialisation...");
   try {
     const item = Office.context.mailbox.item;
 
@@ -728,6 +781,7 @@ async function send(type) {
 
     // Step 1: Get Office API messageId
     debugLog("Step 1: Getting callback token...");
+    updateProgress(15, "Récupération du token...");
     const tokenData = await getEmailWithOfficeApi();
     
     if (tokenData.success) {
@@ -741,6 +795,7 @@ async function send(type) {
 
     // Step 2: Get email content with attachments
     debugLog("Step 2: Getting email content...");
+    updateProgress(25, "Lecture du contenu de l'email et des pièces jointes...");
     const emailContent = await getEmailContent();
     
     debugLog(`✅ Email from: ${emailContent.from}`);
@@ -754,6 +809,7 @@ async function send(type) {
     } else {
       debugLog(`📎 No attachments`);
     }
+    updateProgress(50, "Encodage de l'email en base64...");
 
     // Step 3: Build email in base64
     showStatus("⌛ Encodage du message...", "info");
@@ -765,7 +821,7 @@ async function send(type) {
     } else {
       debugLog(`✅ Email encoded: ${emailBase64.length} bytes`);
       const sizeMB = (emailBase64.length / 1024 / 1024).toFixed(2);
-      if (emailBase64.length > 100000) {
+      if (emailBase64.length > 1000000) {
         debugLog(`⚠️ Large payload: ${sizeMB}MB - may take longer to process`);
       }
       cachedPayload.evenement.pj = emailBase64;
@@ -776,23 +832,55 @@ async function send(type) {
 
     // Step 4: Send to proxy
     debugLog(`📤 Sending to Divalto (type: ${type})...`);
+    updateProgress(70, "Préparation du payload...");
     showStatus("🚀 Envoi... (cela peut prendre du temps pour les gros fichiers)", "info");
 
+    // Measure JSON stringify performance
+    const startStringify = performance.now();
+    const jsonPayload = JSON.stringify(cachedPayload);
+    const stringifyTime = performance.now() - startStringify;
+    const payloadSizeKB = (jsonPayload.length / 1024).toFixed(2);
+    debugLog(`⏱️ JSON.stringify took ${stringifyTime.toFixed(2)}ms for ${payloadSizeKB}KB`);
+    
+    updateProgress(75, `Transmission vers le serveur (${payloadSizeKB}KB)...`);
+    
+    // Measure fetch performance - split into request and response times
+    const startFetch = performance.now();
+    let requestTime = 0;
+    
     const res = await fetch("https://maisondelarose.org/proxy/proxy.php", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(cachedPayload)
+      body: jsonPayload
+    }).then(response => {
+      requestTime = performance.now() - startFetch;
+      debugLog(`⏱️ Request transmission took ${requestTime.toFixed(2)}ms`);
+      return response;
     });
+    
+    updateProgress(82, "Attente de la réponse du serveur...");
+    const startResponse = performance.now();
 
     // Step 5: Parse response
+    updateProgress(85, "Traitement par le serveur...");
     debugLog(`Response status: ${res.status}`);
     const text = await res.text();
+    const responseTime = performance.now() - startResponse;
+    debugLog(`⏱️ Response received in ${responseTime.toFixed(2)}ms`);
+    const totalFetchTime = performance.now() - startFetch;
+    debugLog(`⏱️ Total fetch (request + response) took ${totalFetchTime.toFixed(2)}ms`);
     debugLog(`Response text length: ${text.length} bytes`);
     debugLog(`First 500 chars: ${text.substring(0, 500)}`);
     
+    updateProgress(95, "Finalisation...");
+    const startFinalization = performance.now();
+    
     let parsed;
     try {
+      const parseStart = performance.now();
       parsed = JSON.parse(text);
+      const parseTime = performance.now() - parseStart;
+      debugLog(`⏱️ JSON.parse took ${parseTime.toFixed(2)}ms`);
       debugLog(`✅ JSON parsed successfully`);
     } catch (e) {
       debugLog(`❌ JSON parse error: ${e.message}`);
@@ -831,16 +919,22 @@ async function send(type) {
       debugLog(`❌ Parse error: ${e.message}`);
     }
 
+    const finalizationTime = performance.now() - startFinalization;
+    debugLog(`⏱️ Finalisation took ${finalizationTime.toFixed(2)}ms`);
+
     if (code === "0" && evt) {
       debugLog(`✅ SUCCESS - Event: ${evt}`);
+      updateProgress(100, "✅ Succès!");
       hideLoading();
       showStatus(`🎉 Succès — Évènement: ${evt}`, "success");
     } else if (code && code !== "0") {
       debugLog(`❌ API Error - Code: ${code}`);
+      updateProgress(100, "❌ Erreur");
       hideLoading();
       showStatus(`❌ Erreur API (Code: ${code})`, "error");
     } else if (res.status === 502) {
       // Handle 502 Bad Gateway (timeout from proxy)
+      updateProgress(100, "❌ Timeout");
       hideLoading();
       const errorDetails = parsed?.details || "";
       if (errorDetails.includes("timeout")) {
@@ -853,17 +947,17 @@ async function send(type) {
     } else {
       debugLog(`⚠️ Could not extract code or event`);
       debugLog(`Response: ${JSON.stringify(parsed)}`);
+      updateProgress(100, "⚠️ Réponse invalide");
       hideLoading();
       showStatus(`⚠️ Réponse inattendue du serveur`, "warning");
     }
 
   } catch (err) {
     debugLog("❌ Fetch error: " + err.message);
+    updateProgress(100, "❌ Erreur");
     hideLoading();
     showStatus("❌ Erreur de communication", "error");
   }
 }
-
-
 
 

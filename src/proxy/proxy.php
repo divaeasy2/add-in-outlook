@@ -41,7 +41,7 @@ curl_setopt_array($ch, [
     CURLOPT_RETURNTRANSFER => true,
     CURLOPT_SSL_VERIFYPEER => false,
     CURLOPT_SSL_VERIFYHOST => false,
-    CURLOPT_TIMEOUT => 120,           // Increased to 120 seconds for large payloads
+    CURLOPT_TIMEOUT => 180,           // Increased to 180 seconds for very large payloads
     CURLOPT_CONNECTTIMEOUT => 10,     // Connection timeout 10 seconds
     CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1
 ]);
