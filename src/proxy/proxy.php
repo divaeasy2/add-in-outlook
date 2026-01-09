@@ -41,7 +41,9 @@ curl_setopt_array($ch, [
     CURLOPT_RETURNTRANSFER => true,
     CURLOPT_SSL_VERIFYPEER => false,
     CURLOPT_SSL_VERIFYHOST => false,
-    CURLOPT_TIMEOUT => 30
+    CURLOPT_TIMEOUT => 120,           // Increased to 120 seconds for large payloads
+    CURLOPT_CONNECTTIMEOUT => 10,     // Connection timeout 10 seconds
+    CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1
 ]);
 
 $response = curl_exec($ch);
@@ -52,10 +54,10 @@ curl_close($ch);
 
 
 if ($response === false) {
-    http_response_code(500);
+    http_response_code(502);
     echo json_encode([
         "ok" => false,
-        "error" => "cURL error",
+        "error" => "Failed to reach Divalto API",
         "details" => $error
     ]);
     exit;

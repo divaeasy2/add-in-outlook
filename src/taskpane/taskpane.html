@@ -59,14 +59,14 @@
         Type d'évènement SAV
       </div>
       <div class="btnPopup" style="flex-direction: column; gap: 10px;">
-        <button id="btnSavNew" class="action-btn secondary" style="margin-top:10px;">
-          Nouveau
+        <button id="btnSavNew" class="action-btn primary" style="margin-top:10px;">
+          ✅ Nouveau
         </button>
-        <button id="btnSavLinked" class="action-btn secondary" style="margin-top:10px;">
-          Évènement lié
+        <button id="btnSavLinked" class="action-btn primary" style="margin-top:10px;">
+          🔗 Évènement lié
         </button>
-        <button id="btnSavCancel" class="action-btn secondary" style="margin-top:10px; background: #999;">
-          Retour
+        <button id="btnSavCancel" class="action-btn secondary" style="margin-top:10px;">
+          ↩️ Retour
         </button>
       </div>
     </div>
@@ -114,6 +114,12 @@
     </div>
 
 
+
+    <!-- Loading Animation -->
+    <div id="loadingOverlay" class="loading-overlay" style="display:none;">
+      <div class="loading-spinner"></div>
+      <div class="loading-text">Traitement en cours...</div>
+    </div>
 
     <div id="status" class="status"></div>
     <!-- <div id="pj" ></div> -->

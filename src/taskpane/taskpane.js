@@ -86,6 +86,30 @@ function showStatus(msg, type = "info") {
   }, 3500);
 }
 
+function showLoading() {
+  const overlay = document.getElementById("loadingOverlay");
+  if (overlay) {
+    overlay.style.display = "flex";
+    // Disable all action buttons (including popup buttons) to prevent multiple clicks
+    document.querySelectorAll(".action-btn").forEach(btn => {
+      btn.disabled = true;
+      btn.style.opacity = "0.6";
+    });
+  }
+}
+
+function hideLoading() {
+  const overlay = document.getElementById("loadingOverlay");
+  if (overlay) {
+    overlay.style.display = "none";
+    // Re-enable all action buttons (including popup buttons)
+    document.querySelectorAll(".action-btn").forEach(btn => {
+      btn.disabled = false;
+      btn.style.opacity = "1";
+    });
+  }
+}
+
 function showChildHint(msg = "") {
   const hint = document.getElementById("savHint");
   if (!hint) return;
@@ -250,6 +274,17 @@ async function getEmailContent() {
                   return;
                 }
                 
+                // Detect attachment type
+                const isEmailAttachment = att.contentType && 
+                  (att.contentType.includes('message/rfc822') || 
+                   att.contentType.includes('application/vnd.ms-outlook') ||
+                   att.name?.endsWith('.eml') ||
+                   att.name?.endsWith('.msg'));
+                
+                if (isEmailAttachment) {
+                  debugLog(`   - Type: EMAIL ATTACHMENT (${att.contentType})`);
+                }
+                
                 debugLog(`   - Data type: ${typeof binaryData} (${binaryData instanceof ArrayBuffer ? 'ArrayBuffer' : 'other'})`);
                 
                 let base64Data = '';
@@ -275,9 +310,12 @@ async function getEmailContent() {
                   // Outlook Desktop might return object with nested data
                   debugLog(`   - Checking object properties...`);
                   
-                  // Check for common data properties
+                  // Check for common data properties - priority order for email attachments
                   let extractedData = null;
-                  if (binaryData.content) {
+                  if (isEmailAttachment && binaryData.content) {
+                    extractedData = binaryData.content;
+                    debugLog(`   - Found .content property (email attachment)`);
+                  } else if (binaryData.content) {
                     extractedData = binaryData.content;
                     debugLog(`   - Found .content property`);
                   } else if (binaryData.data) {
@@ -286,6 +324,9 @@ async function getEmailContent() {
                   } else if (binaryData.value) {
                     extractedData = binaryData.value;
                     debugLog(`   - Found .value property`);
+                  } else if (binaryData.bytes) {
+                    extractedData = binaryData.bytes;
+                    debugLog(`   - Found .bytes property`);
                   } else {
                     extractedData = JSON.stringify(binaryData);
                     debugLog(`   - Using stringified object`);
@@ -301,20 +342,51 @@ async function getEmailContent() {
                     base64Data = btoa(binaryStr);
                     debugLog(`✅ Attachment loaded: ${att.name} (${dataLen} bytes → ${base64Data.length} base64)`);
                   } else if (typeof extractedData === 'string') {
-                    base64Data = extractedData;
+                    // For email attachments, validate it's proper base64
+                    if (isEmailAttachment && extractedData.length > 0) {
+                      // Validate base64 for email attachments
+                      const base64Regex = /^[A-Za-z0-9+/=]*$/;
+                      if (base64Regex.test(extractedData)) {
+                        base64Data = extractedData;
+                        dataLen = extractedData.length;
+                        debugLog(`✅ Attachment loaded: ${att.name} (string: ${dataLen} chars, email format)`);
+                      } else {
+                        // Raw text email content - encode to base64
+                        base64Data = btoa(extractedData);
+                        dataLen = extractedData.length;
+                        debugLog(`✅ Attachment loaded: ${att.name} (raw text → base64: ${dataLen} chars)`);
+                      }
+                    } else {
+                      base64Data = extractedData;
+                      dataLen = extractedData.length;
+                      debugLog(`✅ Attachment loaded: ${att.name} (string: ${dataLen} chars)`);
+                    }
+                  } else if (extractedData instanceof Uint8Array) {
+                    // Handle Uint8Array from email attachments
                     dataLen = extractedData.length;
-                    debugLog(`✅ Attachment loaded: ${att.name} (string: ${dataLen} chars)`);
+                    let binaryStr = '';
+                    for (let i = 0; i < extractedData.length; i++) {
+                      binaryStr += String.fromCharCode(extractedData[i]);
+                    }
+                    base64Data = btoa(binaryStr);
+                    debugLog(`✅ Attachment loaded: ${att.name} (Uint8Array: ${dataLen} bytes → base64)`);
                   }
                 }
                 
                 if (base64Data && base64Data.length > 0) {
+                  // For email attachments, ensure correct MIME type
+                  let finalContentType = att.contentType || "application/octet-stream";
+                  if (isEmailAttachment && !finalContentType.includes('message')) {
+                    finalContentType = "message/rfc822";
+                  }
+                  
                   const attData = {
                     name: att.name || `attachment_${idx}`,
-                    contentType: att.contentType || "application/octet-stream",
+                    contentType: finalContentType,
                     data: base64Data
                   };
                   emailData.attachments.push(attData);
-                  debugLog(`✅ Attachment added to email data`);
+                  debugLog(`✅ Attachment added to email data (type: ${finalContentType})`);
                 } else {
                   debugLog(`⚠️ Base64 data is empty for ${att.name}`);
                 }
@@ -648,6 +720,7 @@ async function send(type) {
   document.getElementById("status").style.display = "block";
   if (!cachedPayload) return showStatus("⚠️ Aucun email prêt", "error");
 
+  showLoading(); // Start loading animation
   try {
     const item = Office.context.mailbox.item;
 
@@ -691,6 +764,10 @@ async function send(type) {
       cachedPayload.evenement.pj = "";
     } else {
       debugLog(`✅ Email encoded: ${emailBase64.length} bytes`);
+      const sizeMB = (emailBase64.length / 1024 / 1024).toFixed(2);
+      if (emailBase64.length > 100000) {
+        debugLog(`⚠️ Large payload: ${sizeMB}MB - may take longer to process`);
+      }
       cachedPayload.evenement.pj = emailBase64;
     }
 
@@ -699,7 +776,7 @@ async function send(type) {
 
     // Step 4: Send to proxy
     debugLog(`📤 Sending to Divalto (type: ${type})...`);
-    showStatus("🚀 Envoi...", "info");
+    showStatus("🚀 Envoi... (cela peut prendre du temps pour les gros fichiers)", "info");
 
     const res = await fetch("https://maisondelarose.org/proxy/proxy.php", {
       method: "POST",
@@ -756,17 +833,33 @@ async function send(type) {
 
     if (code === "0" && evt) {
       debugLog(`✅ SUCCESS - Event: ${evt}`);
+      hideLoading();
       showStatus(`🎉 Succès — Évènement: ${evt}`, "success");
     } else if (code && code !== "0") {
       debugLog(`❌ API Error - Code: ${code}`);
+      hideLoading();
       showStatus(`❌ Erreur API (Code: ${code})`, "error");
+    } else if (res.status === 502) {
+      // Handle 502 Bad Gateway (timeout from proxy)
+      hideLoading();
+      const errorDetails = parsed?.details || "";
+      if (errorDetails.includes("timeout")) {
+        debugLog(`⚠️ TIMEOUT: Divalto API took too long to process (large file)`);
+        showStatus(`⚠️ Timeout - le fichier est trop volumineux pour Divalto`, "warning");
+      } else {
+        debugLog(`❌ Erreur 502 - Proxy error: ${errorDetails}`);
+        showStatus(`❌ Erreur 502 - Problème de communication`, "error");
+      }
     } else {
       debugLog(`⚠️ Could not extract code or event`);
-      showStatus(`⚠️ Réponse inattendue`, "warning");
+      debugLog(`Response: ${JSON.stringify(parsed)}`);
+      hideLoading();
+      showStatus(`⚠️ Réponse inattendue du serveur`, "warning");
     }
 
   } catch (err) {
     debugLog("❌ Fetch error: " + err.message);
+    hideLoading();
     showStatus("❌ Erreur de communication", "error");
   }
 }
