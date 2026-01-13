@@ -19,10 +19,10 @@ function logDebug($message) {
 
 // Load environment variables from .env file
 $envPaths = [
-    __DIR__ . '/../../.env',           // src/proxy/../../.env
-    __DIR__ . '/../../../.env',        // src/proxy/../../../.env
-    '/var/www/html/.env',             // Common server path
-    getenv('HOME') . '/.env',          // Home directory
+    __DIR__ . '/../../.env',        
+    __DIR__ . '/../../../.env',    
+    '/var/www/html/.env',          
+    getenv('HOME') . '/.env',       
 ];
 
 logDebug("🔍 Looking for .env file...");
@@ -55,14 +55,10 @@ if ($envFile) {
     logDebug("⚠️  .env file not found in any path, relying on system environment");
 }
 
-/**
- * Decrypt password from database (encrypted with AES-256-CBC)
- * The encryption key must be exactly 32 bytes
- */
+
 function decryptPassword($encryptedPassword) {
     $encryptionKeyString = getenv('ENCRYPTION_KEY') ?: 'divalto2025';
     
-    // Ensure key is exactly 32 bytes (pad with '!' if needed)
     $encryptionKey = substr(str_pad($encryptionKeyString, 32, '!'), 0, 32);
     
     // Decode from base64

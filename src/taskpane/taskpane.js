@@ -42,22 +42,18 @@ Office.onReady(() => {
   document.getElementById("btnConfirmLinked").onclick = () => sendWithLinkedEvent();
   document.getElementById("btnCancelLinked").onclick = () => returnFromConfirmation();
 
-  // Initialize: Fetch token on add-in load
+  // Initialize: Just prepare email, token will be fetched on demand when user clicks an action
   debugLog("🚀 Initializing add-in...");
-  fetchTokenFromProxy()
-    .then((token) => {
-      cachedToken = token;
-      debugLog("✅ Add-in initialized with token");
-      enableButtons();
-      showStatus("✅ Add-in prêt - Vous pouvez utiliser les actions", "success");
-    })
-    .catch((error) => {
-      debugLog(`❌ Failed to initialize: ${error}`);
-      showStatus(`❌ Erreur d'initialisation: ${error}`, "error");
-      disableButtons();
-    });
-
-  prepareEmail();
+  try {
+    enableButtons(); // Enable buttons from the start
+    showStatus("✅ Add-in prêt - Cliquez sur une action pour continuer", "success");
+    prepareEmail();
+    debugLog("✅ Add-in initialized. Token will be fetched on first action.");
+  } catch (error) {
+    debugLog(`❌ Failed to initialize: ${error}`);
+    showStatus(`❌ Erreur d'initialisation: ${error}`, "error");
+    disableButtons();
+  }
 });
 
 /* ======================
@@ -866,12 +862,21 @@ async function send(type) {
   document.getElementById("status").style.display = "block";
   if (!cachedPayload) return showStatus("⚠️ Aucun email prêt", "error");
   
-  if (!cachedToken) {
-    debugLog("❌ No authentication token available");
-    return showStatus("❌ Token non disponible - Rechargez l'add-in", "error");
+  showLoading(); // Start loading animation
+  updateProgress(5, "Récupération du token d'authentification...");
+  
+  // Fetch fresh token before each action (tokens expire in 30 minutes)
+  try {
+    debugLog("🔐 Fetching fresh authentication token for this action...");
+    cachedToken = await fetchTokenFromProxy();
+    debugLog("✅ Token fetched successfully");
+  } catch (error) {
+    debugLog(`❌ Failed to fetch token: ${error.message}`);
+    showStatus(`❌ Erreur d'authentification: ${error.message}`, "error");
+    hideLoading();
+    return;
   }
 
-  showLoading(); // Start loading animation
   updateProgress(10, "Initialisation...");
   try {
     const item = Office.context.mailbox.item;
