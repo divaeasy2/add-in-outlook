@@ -847,6 +847,7 @@ async function send(type) {
     // Measure fetch performance - split into request and response times
     const startFetch = performance.now();
     let requestTime = 0;
+    let serverWaitStart = null;
     
     const res = await fetch("https://maisondelarose.org/proxy/proxy.php", {
       method: "POST",
@@ -855,25 +856,51 @@ async function send(type) {
     }).then(response => {
       requestTime = performance.now() - startFetch;
       debugLog(`⏱️ Request transmission took ${requestTime.toFixed(2)}ms`);
+      serverWaitStart = performance.now();
+      // Update immediately when response headers arrive
+      updateProgress(80, `Réponse reçue — Traitement en cours (${(requestTime / 1000).toFixed(1)}s)...`);
       return response;
     });
     
-    updateProgress(82, "Attente de la réponse du serveur...");
-    const startResponse = performance.now();
-
     // Step 5: Parse response
-    updateProgress(85, "Traitement par le serveur...");
     debugLog(`Response status: ${res.status}`);
     const text = await res.text();
-    const responseTime = performance.now() - startResponse;
-    debugLog(`⏱️ Response received in ${responseTime.toFixed(2)}ms`);
     const totalFetchTime = performance.now() - startFetch;
-    debugLog(`⏱️ Total fetch (request + response) took ${totalFetchTime.toFixed(2)}ms`);
+    debugLog(`⏱️ Total fetch (request + server processing) took ${totalFetchTime.toFixed(2)}ms`);
     debugLog(`Response text length: ${text.length} bytes`);
     debugLog(`First 500 chars: ${text.substring(0, 500)}`);
     
-    updateProgress(95, "Finalisation...");
+    updateProgress(90, "Analyse de la réponse...");
     const startFinalization = performance.now();
+    
+    // Defer parsing to allow progress bar to render first
+    // Use setTimeout with 0 delay to yield to browser's event loop
+    await new Promise(resolve => setTimeout(resolve, 50));
+    
+    // Check for error status codes first
+    if (res.status === 500) {
+      debugLog(`❌ Server Error 500: Internal Server Error`);
+      updateProgress(100, "❌ Erreur serveur");
+      hideLoading();
+      showStatus(`❌ Erreur serveur (500) - Divalto a rencontré un problème`, "error");
+      return;
+    }
+    
+    if (res.status === 502) {
+      debugLog(`❌ Server Error 502: Bad Gateway (timeout)`);
+      updateProgress(100, "❌ Timeout");
+      hideLoading();
+      showStatus(`⚠️ Timeout - le fichier est trop volumineux pour Divalto`, "warning");
+      return;
+    }
+    
+    if (res.status >= 400) {
+      debugLog(`❌ Server Error ${res.status}`);
+      updateProgress(100, `❌ Erreur ${res.status}`);
+      hideLoading();
+      showStatus(`❌ Erreur serveur (${res.status})`, "error");
+      return;
+    }
     
     let parsed;
     try {
@@ -884,40 +911,69 @@ async function send(type) {
       debugLog(`✅ JSON parsed successfully`);
     } catch (e) {
       debugLog(`❌ JSON parse error: ${e.message}`);
-      showStatus("⚠️ Format de réponse inattendu", "warning");
+      debugLog(`Response was not JSON. First 200 chars: ${text.substring(0, 200)}`);
+      updateProgress(100, "❌ Format invalide");
+      hideLoading();
+      showStatus("⚠️ Réponse serveur invalide (non-JSON)", "warning");
       return;
     }
 
-    debugLog(`Full response: ${JSON.stringify(parsed)}`);
-    
+    // Update progress after parsing (show that parsing completed)
+    updateProgress(93, "Extraction des résultats...");
+
     // Parse Divalto response structure
     let code = null;
     let evt = null;
     
     try {
       let resultStr = parsed?.json?.result || "";
-      debugLog(`Raw result string: ${resultStr}`);
       
       if (!resultStr) {
         throw new Error("No result string found");
       }
       
-      // Unescape the string
-      let unescaped = resultStr.replace(/\\"/g, '"').replace(/\\\\/g, '\\');
-      debugLog(`Unescaped: ${unescaped}`);
+      // Optimize: Only unescape and extract the key fields, not the entire string
+      // Use simpler substring operations instead of global regex on huge strings
+      const codeIdx = resultStr.indexOf('"resultcode"');
+      const evtIdx = resultStr.indexOf('"EvtNo"');
       
-      // Extract using regex
-      const codeMatch = unescaped.match(/"resultcode"\s*:\s*"(\d+)"/);
-      const evtMatch = unescaped.match(/"EvtNo"\s*:\s*"([^"]+)"/);
+      if (codeIdx !== -1) {
+        // Find the value after "resultcode":"
+        const valueStart = resultStr.indexOf(':', codeIdx) + 2; // Skip ":
+        const valueEnd = resultStr.indexOf('"', valueStart);
+        if (valueEnd > valueStart) {
+          code = resultStr.substring(valueStart, valueEnd);
+          debugLog(`Extracted Code: ${code}`);
+        }
+      }
       
-      code = codeMatch ? codeMatch[1] : null;
-      evt = evtMatch ? evtMatch[1].trim() : null;
+      if (evtIdx !== -1) {
+        // Find the value after "EvtNo":"
+        const valueStart = resultStr.indexOf(':', evtIdx) + 2; // Skip ":
+        const valueEnd = resultStr.indexOf('"', valueStart);
+        if (valueEnd > valueStart) {
+          evt = resultStr.substring(valueStart, valueEnd).trim();
+          debugLog(`Extracted Event: ${evt}`);
+        }
+      }
       
-      debugLog(`Extracted - Code: ${code}, Event: ${evt}`);
+      if (!code && !evt) {
+        // Fallback to regex if simple extraction didn't work
+        debugLog(`Simple extraction failed, trying regex...`);
+        const codeMatch = resultStr.match(/"resultcode"\s*:\s*"(\d+)"/);
+        const evtMatch = resultStr.match(/"EvtNo"\s*:\s*"([^"]+)"/);
+        code = codeMatch ? codeMatch[1] : null;
+        evt = evtMatch ? evtMatch[1].trim() : null;
+      }
+      
+      debugLog(`Final - Code: ${code}, Event: ${evt}`);
       
     } catch (e) {
       debugLog(`❌ Parse error: ${e.message}`);
     }
+
+    // Update progress after extraction (show that extraction completed)
+    updateProgress(97, "Finalisation...");
 
     const finalizationTime = performance.now() - startFinalization;
     debugLog(`⏱️ Finalisation took ${finalizationTime.toFixed(2)}ms`);
@@ -932,21 +988,8 @@ async function send(type) {
       updateProgress(100, "❌ Erreur");
       hideLoading();
       showStatus(`❌ Erreur API (Code: ${code})`, "error");
-    } else if (res.status === 502) {
-      // Handle 502 Bad Gateway (timeout from proxy)
-      updateProgress(100, "❌ Timeout");
-      hideLoading();
-      const errorDetails = parsed?.details || "";
-      if (errorDetails.includes("timeout")) {
-        debugLog(`⚠️ TIMEOUT: Divalto API took too long to process (large file)`);
-        showStatus(`⚠️ Timeout - le fichier est trop volumineux pour Divalto`, "warning");
-      } else {
-        debugLog(`❌ Erreur 502 - Proxy error: ${errorDetails}`);
-        showStatus(`❌ Erreur 502 - Problème de communication`, "error");
-      }
     } else {
       debugLog(`⚠️ Could not extract code or event`);
-      debugLog(`Response: ${JSON.stringify(parsed)}`);
       updateProgress(100, "⚠️ Réponse invalide");
       hideLoading();
       showStatus(`⚠️ Réponse inattendue du serveur`, "warning");
