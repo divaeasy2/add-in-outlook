@@ -6,6 +6,7 @@ let statusTimeoutId = null;
 let allEvents = []; // Store all events for filtering
 let cachedToken = null; // Cache for API token
 let tokenFetchInProgress = false; // Prevent multiple token requests
+let realiseOkFilter = 0; // Track the RealiseOk filter state (0 = available only, 1 = all events)
 
 Office.onReady(() => {
   const displayName = Office.context.mailbox.userProfile.displayName;
@@ -37,6 +38,9 @@ Office.onReady(() => {
   
   // Search input for events
   document.getElementById("eventSearchInput").addEventListener("input", (e) => filterEvents(e.target.value));
+  
+  // Show all events checkbox
+  document.getElementById("showAllEventsCheckbox").addEventListener("change", (e) => handleShowAllEventsToggle(e.target.checked));
   
   // Confirmation modal buttons
   document.getElementById("btnConfirmLinked").onclick = () => sendWithLinkedEvent();
@@ -640,7 +644,8 @@ async function loadChildEventsForSav() {
   const payload = {
     evenement: {
       utilisateur: cachedPayload.evenement.utilisateur,
-      tiers: cachedPayload.evenement.tiers
+      tiers: cachedPayload.evenement.tiers,
+      RealiseOk: realiseOkFilter // Include the RealiseOk filter (0 = available, 1 = all)
     }
   };
 
@@ -657,6 +662,7 @@ async function loadChildEventsForSav() {
   const select = document.getElementById("childSelect");
   const evtCount = document.getElementById("evtCount");
   const searchInput = document.getElementById("eventSearchInput");
+  const showAllCheckbox = document.getElementById("showAllEventsCheckbox");
 
   if (!parsed.ok) {
     popup.style.display = "none";
@@ -669,6 +675,9 @@ async function loadChildEventsForSav() {
   // Hide options modal and show child events popup
   document.getElementById("savOptionsModal").style.display = "none";
   popup.style.display = "block";
+  
+  // Reset checkbox state
+  showAllCheckbox.checked = realiseOkFilter === 1;
   
   // Clear and rebuild select with proper encoding
   select.innerHTML = `<option value="">-- Choisissez un évènement --</option>`;
@@ -692,14 +701,15 @@ async function loadChildEventsForSav() {
     searchInput.style.display = "none";
   }
   
-  showStatus(`🟢 ${parsed.count} évènements récupérés`, "success");
+  const filterStatus = realiseOkFilter === 1 ? "tous les évènements" : "évènements disponibles";
+  showStatus(`🟢 ${parsed.count} ${filterStatus} récupérés`, "success");
 }
 
 function filterEvents(searchTerm) {
   const select = document.getElementById("childSelect");
   const searchValue = searchTerm.toLowerCase().trim();
   
-  // Clear current options (except placeh older)
+  // Clear current options (except placeholder)
   select.innerHTML = `<option value="">-- Choisissez un évènement --</option>`;
   
   // Filter events
@@ -726,6 +736,17 @@ function filterEvents(searchTerm) {
   } else {
     evtCount.innerText = `${allEvents.length} évènements trouvés`;
   }
+}
+
+async function handleShowAllEventsToggle(isChecked) {
+  debugLog(`📋 Show all events toggle: ${isChecked ? 'ON (RealiseOk=1)' : 'OFF (RealiseOk=0)'}`);
+  
+  // Update the filter state
+  realiseOkFilter = isChecked ? 1 : 0;
+  
+  // Reload events with new filter
+  showStatus(`⏳ Chargement des ${isChecked ? 'tous les' : 'évènements disponibles'}...`, "info");
+  await loadChildEventsForSav();
 }
 
 function confirmLinkedEvent() {
