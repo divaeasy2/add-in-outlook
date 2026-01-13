@@ -4,6 +4,8 @@ let cachedPayload = null;
 const MAX_EMAIL_SIZE = 10 * 1024 * 1024; // 10 MB
 let statusTimeoutId = null;
 let allEvents = []; // Store all events for filtering
+let cachedToken = null; // Cache for API token
+let tokenFetchInProgress = false; // Prevent multiple token requests
 
 Office.onReady(() => {
   const displayName = Office.context.mailbox.userProfile.displayName;
@@ -39,6 +41,21 @@ Office.onReady(() => {
   // Confirmation modal buttons
   document.getElementById("btnConfirmLinked").onclick = () => sendWithLinkedEvent();
   document.getElementById("btnCancelLinked").onclick = () => returnFromConfirmation();
+
+  // Initialize: Fetch token on add-in load
+  debugLog("🚀 Initializing add-in...");
+  fetchTokenFromProxy()
+    .then((token) => {
+      cachedToken = token;
+      debugLog("✅ Add-in initialized with token");
+      enableButtons();
+      showStatus("✅ Add-in prêt - Vous pouvez utiliser les actions", "success");
+    })
+    .catch((error) => {
+      debugLog(`❌ Failed to initialize: ${error}`);
+      showStatus(`❌ Erreur d'initialisation: ${error}`, "error");
+      disableButtons();
+    });
 
   prepareEmail();
 });
@@ -763,6 +780,83 @@ function returnFromLinkedEvents() {
   document.getElementById("status").style.display = "none";
 }
 
+/* ======================
+   TOKEN MANAGEMENT
+====================== */
+
+async function fetchTokenFromProxy() {
+  if (tokenFetchInProgress) {
+    debugLog("⏳ Token fetch already in progress...");
+    // Wait for existing fetch to complete
+    return new Promise((resolve, reject) => {
+      const checkInterval = setInterval(() => {
+        if (cachedToken && !tokenFetchInProgress) {
+          clearInterval(checkInterval);
+          resolve(cachedToken);
+        }
+      }, 100);
+    });
+  }
+
+  tokenFetchInProgress = true;
+  debugLog("🔐 Fetching authentication token from proxy...");
+  
+  try {
+    const response = await fetch("https://maisondelarose.org/proxy/proxy.php", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token_request: true }) // Explicit token request signal
+    });
+
+    debugLog(`📊 Token response status: ${response.status}`);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      debugLog(`❌ Token fetch failed: HTTP ${response.status}`);
+      debugLog(`Error details: ${errorText.substring(0, 200)}`);
+      throw new Error(`HTTP ${response.status}: ${errorText}`);
+    }
+
+    const data = await response.json();
+    
+    if (!data.ok) {
+      debugLog(`❌ Token API error: ${data.error}`);
+      throw new Error(data.error || "Token retrieval failed");
+    }
+
+    if (!data.token) {
+      debugLog(`❌ No token in response`);
+      throw new Error("No token provided in response");
+    }
+
+    debugLog(`✅ Token obtained successfully`);
+    debugLog(`🔑 Token length: ${data.token.length} chars`);
+    
+    tokenFetchInProgress = false;
+    return data.token;
+
+  } catch (error) {
+    tokenFetchInProgress = false;
+    debugLog(`❌ Token fetch error: ${error.message}`);
+    throw error;
+  }
+}
+
+function enableButtons() {
+  document.querySelectorAll(".action-btn").forEach((btn) => {
+    btn.disabled = false;
+    btn.style.opacity = "1";
+  });
+  debugLog("✅ All action buttons enabled");
+}
+
+function disableButtons() {
+  document.querySelectorAll(".action-btn").forEach((btn) => {
+    btn.disabled = true;
+    btn.style.opacity = "0.5";
+  });
+  debugLog("⛔ All action buttons disabled");
+}
 
 /* ======================
    SEND
@@ -771,6 +865,11 @@ function returnFromLinkedEvents() {
 async function send(type) {
   document.getElementById("status").style.display = "block";
   if (!cachedPayload) return showStatus("⚠️ Aucun email prêt", "error");
+  
+  if (!cachedToken) {
+    debugLog("❌ No authentication token available");
+    return showStatus("❌ Token non disponible - Rechargez l'add-in", "error");
+  }
 
   showLoading(); // Start loading animation
   updateProgress(10, "Initialisation...");
@@ -780,49 +879,49 @@ async function send(type) {
     showStatus("⌛ Récupération des données...", "info");
 
     // Step 1: Get Office API messageId
-    debugLog("Step 1: Getting callback token...");
-    updateProgress(15, "Récupération du token...");
+    debugLog("📝 Step 1: Retrieving Office API message ID...");
+    updateProgress(15, "Récupération de l'ID message...");
     const tokenData = await getEmailWithOfficeApi();
     
     if (tokenData.success) {
-      debugLog(`✅ Token obtained for user: ${tokenData.emailAddress}`);
-      debugLog(`Message ID: ${tokenData.messageId}`);
+      debugLog(`✅ Office token obtained for: ${tokenData.emailAddress}`);
+      debugLog(`📧 Message ID: ${tokenData.messageId}`);
       cachedPayload.evenement.messageId = tokenData.messageId;
     } else {
-      debugLog(`⚠️ No token, using Office API fallback`);
+      debugLog(`⚠️ Office token unavailable, using fallback ID`);
       cachedPayload.evenement.messageId = item.itemId;
     }
 
     // Step 2: Get email content with attachments
-    debugLog("Step 2: Getting email content...");
-    updateProgress(25, "Lecture du contenu de l'email et des pièces jointes...");
+    debugLog("📧 Step 2: Retrieving email content and attachments...");
+    updateProgress(25, "Lecture du contenu de l'email...");
     const emailContent = await getEmailContent();
     
-    debugLog(`✅ Email from: ${emailContent.from}`);
+    debugLog(`✅ Email sender: ${emailContent.from}`);
     debugLog(`📧 Subject: ${emailContent.subject}`);
-    debugLog(`📄 Body type: ${emailContent.bodyType} (${emailContent.bodyType === "html" ? "images/formatting preserved" : "text only"})`);
+    debugLog(`📄 Body type: ${emailContent.bodyType} (${emailContent.bodyType === "html" ? "HTML with formatting" : "Plain text"})`);
     if (emailContent.attachments && emailContent.attachments.length > 0) {
-      debugLog(`📎 ${emailContent.attachments.length} attachment(s):`);
+      debugLog(`📎 ${emailContent.attachments.length} piece(s) jointe(s):`);
       emailContent.attachments.forEach(att => {
         debugLog(`   - ${att.name} (${att.contentType})`);
       });
     } else {
       debugLog(`📎 No attachments`);
     }
-    updateProgress(50, "Encodage de l'email en base64...");
-
-    // Step 3: Build email in base64
-    showStatus("⌛ Encodage du message...", "info");
+    
+    // Step 3: Build email in base64 format
+    debugLog("🔐 Step 3: Encoding email to base64...");
+    updateProgress(50, "Encodage de l'email...");
     const emailBase64 = buildEmailBase64(item, emailContent);
     
     if (!emailBase64) {
-      debugLog("⚠️ Email too large, will send without attachment");
+      debugLog("⚠️ Email too large, sending without attachments");
       cachedPayload.evenement.pj = "";
     } else {
       debugLog(`✅ Email encoded: ${emailBase64.length} bytes`);
       const sizeMB = (emailBase64.length / 1024 / 1024).toFixed(2);
       if (emailBase64.length > 1000000) {
-        debugLog(`⚠️ Large payload: ${sizeMB}MB - may take longer to process`);
+        debugLog(`⚠️ Large payload detected: ${sizeMB}MB`);
       }
       cachedPayload.evenement.pj = emailBase64;
     }
@@ -830,169 +929,141 @@ async function send(type) {
     cachedPayload.evenement.type = type;
     cachedPayload.evenement.evt_lie = cachedPayload.evenement.evt_lie || "";
 
-    // Step 4: Send to proxy
-    debugLog(`📤 Sending to Divalto (type: ${type})...`);
+    // Step 4: Prepare and send REST API request
+    debugLog(`🚀 Step 4: Preparing REST API call (type: ${type})...`);
     updateProgress(70, "Préparation du payload...");
-    showStatus("🚀 Envoi... (cela peut prendre du temps pour les gros fichiers)", "info");
+    showStatus("🚀 Envoi vers l'API...", "info");
 
-    // Measure JSON stringify performance
-    const startStringify = performance.now();
-    const jsonPayload = JSON.stringify(cachedPayload);
-    const stringifyTime = performance.now() - startStringify;
-    const payloadSizeKB = (jsonPayload.length / 1024).toFixed(2);
-    debugLog(`⏱️ JSON.stringify took ${stringifyTime.toFixed(2)}ms for ${payloadSizeKB}KB`);
+    // Build REST API payload
+    const restPayload = {
+      action: "WEB_SERVICE_INFINITY",
+      access_token: cachedToken,
+      param: JSON.stringify({
+        action: { swinfinity: "dv_creation_evt" },
+        data: { evenement: cachedPayload.evenement }
+      })
+    };
+
+    debugLog(`📋 Payload structure: action=${restPayload.action}, token=${restPayload.access_token.substring(0, 20)}...`);
+    debugLog(`📄 Event parameters: type=${type}, user=${cachedPayload.evenement.utilisateur}`);
+
+    updateProgress(75, "Transmission vers le serveur...");
     
-    updateProgress(75, `Transmission vers le serveur (${payloadSizeKB}KB)...`);
-    
-    // Measure fetch performance - split into request and response times
+    // Send to REST API
     const startFetch = performance.now();
-    let requestTime = 0;
-    let serverWaitStart = null;
-    
     const res = await fetch("https://maisondelarose.org/proxy/proxy.php", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: jsonPayload
-    }).then(response => {
-      requestTime = performance.now() - startFetch;
-      debugLog(`⏱️ Request transmission took ${requestTime.toFixed(2)}ms`);
-      serverWaitStart = performance.now();
-      // Update immediately when response headers arrive
-      updateProgress(80, `Réponse reçue — Traitement en cours (${(requestTime / 1000).toFixed(1)}s)...`);
-      return response;
+      body: JSON.stringify(restPayload)
     });
     
-    // Step 5: Parse response
-    debugLog(`Response status: ${res.status}`);
-    const text = await res.text();
     const totalFetchTime = performance.now() - startFetch;
-    debugLog(`⏱️ Total fetch (request + server processing) took ${totalFetchTime.toFixed(2)}ms`);
-    debugLog(`Response text length: ${text.length} bytes`);
-    debugLog(`First 500 chars: ${text.substring(0, 500)}`);
+    debugLog(`⏱️ API request took ${totalFetchTime.toFixed(2)}ms`);
+    debugLog(`📊 Response status: ${res.status}`);
     
-    updateProgress(90, "Analyse de la réponse...");
-    const startFinalization = performance.now();
-    
-    // Defer parsing to allow progress bar to render first
-    // Use setTimeout with 0 delay to yield to browser's event loop
-    await new Promise(resolve => setTimeout(resolve, 50));
-    
-    // Check for error status codes first
-    if (res.status === 500) {
-      debugLog(`❌ Server Error 500: Internal Server Error`);
-      updateProgress(100, "❌ Erreur serveur");
-      hideLoading();
-      showStatus(`❌ Erreur serveur (500) - Divalto a rencontré un problème`, "error");
-      return;
-    }
-    
-    if (res.status === 502) {
-      debugLog(`❌ Server Error 502: Bad Gateway (timeout)`);
-      updateProgress(100, "❌ Timeout");
-      hideLoading();
-      showStatus(`⚠️ Timeout - le fichier est trop volumineux pour Divalto`, "warning");
-      return;
-    }
-    
-    if (res.status >= 400) {
-      debugLog(`❌ Server Error ${res.status}`);
-      updateProgress(100, `❌ Erreur ${res.status}`);
-      hideLoading();
+    // Step 5: Parse response
+    updateProgress(90, "Traitement de la réponse...");
+    const text = await res.text();
+    debugLog(`📥 Response size: ${text.length} bytes`);
+
+    if (!res.ok) {
+      debugLog(`❌ Server error: HTTP ${res.status}`);
+      debugLog(`Response: ${text.substring(0, 300)}`);
       showStatus(`❌ Erreur serveur (${res.status})`, "error");
+      hideLoading();
       return;
     }
-    
+
     let parsed;
     try {
-      const parseStart = performance.now();
       parsed = JSON.parse(text);
-      const parseTime = performance.now() - parseStart;
-      debugLog(`⏱️ JSON.parse took ${parseTime.toFixed(2)}ms`);
-      debugLog(`✅ JSON parsed successfully`);
+      debugLog(`✅ Response parsed successfully`);
     } catch (e) {
       debugLog(`❌ JSON parse error: ${e.message}`);
-      debugLog(`Response was not JSON. First 200 chars: ${text.substring(0, 200)}`);
-      updateProgress(100, "❌ Format invalide");
+      debugLog(`Raw response: ${text.substring(0, 200)}`);
+      showStatus("❌ Réponse invalide du serveur", "error");
       hideLoading();
-      showStatus("⚠️ Réponse serveur invalide (non-JSON)", "warning");
       return;
     }
 
-    // Update progress after parsing (show that parsing completed)
-    updateProgress(93, "Extraction des résultats...");
+    // Step 6: Extract and validate response
+    updateProgress(95, "Finalisation...");
+    debugLog(`🔍 Analyzing response: ${JSON.stringify(parsed)}`);
 
-    // Parse Divalto response structure
-    let code = null;
-    let evt = null;
-    
-    try {
-      let resultStr = parsed?.json?.result || "";
-      
-      if (!resultStr) {
-        throw new Error("No result string found");
-      }
-      
-      // Optimize: Only unescape and extract the key fields, not the entire string
-      // Use simpler substring operations instead of global regex on huge strings
-      const codeIdx = resultStr.indexOf('"resultcode"');
-      const evtIdx = resultStr.indexOf('"EvtNo"');
-      
-      if (codeIdx !== -1) {
-        // Find the value after "resultcode":"
-        const valueStart = resultStr.indexOf(':', codeIdx) + 2; // Skip ":
-        const valueEnd = resultStr.indexOf('"', valueStart);
-        if (valueEnd > valueStart) {
-          code = resultStr.substring(valueStart, valueEnd);
-          debugLog(`Extracted Code: ${code}`);
-        }
-      }
-      
-      if (evtIdx !== -1) {
-        // Find the value after "EvtNo":"
-        const valueStart = resultStr.indexOf(':', evtIdx) + 2; // Skip ":
-        const valueEnd = resultStr.indexOf('"', valueStart);
-        if (valueEnd > valueStart) {
-          evt = resultStr.substring(valueStart, valueEnd).trim();
-          debugLog(`Extracted Event: ${evt}`);
-        }
-      }
-      
-      if (!code && !evt) {
-        // Fallback to regex if simple extraction didn't work
-        debugLog(`Simple extraction failed, trying regex...`);
-        const codeMatch = resultStr.match(/"resultcode"\s*:\s*"(\d+)"/);
-        const evtMatch = resultStr.match(/"EvtNo"\s*:\s*"([^"]+)"/);
-        code = codeMatch ? codeMatch[1] : null;
-        evt = evtMatch ? evtMatch[1].trim() : null;
-      }
-      
-      debugLog(`Final - Code: ${code}, Event: ${evt}`);
-      
-    } catch (e) {
-      debugLog(`❌ Parse error: ${e.message}`);
+    // Parse the response structure - it may contain nested JSON strings
+    let resultCode = null;
+    let eventNo = null;
+    let errorMessage = null;
+
+    // Check for error code at top level
+    if (parsed.error !== undefined && parsed.error !== 0) {
+      debugLog(`❌ API returned error code: ${parsed.error}`);
+      showStatus(`❌ Erreur serveur (${parsed.error})`, "error");
+      hideLoading();
+      return;
     }
 
-    // Update progress after extraction (show that extraction completed)
-    updateProgress(97, "Finalisation...");
+    // Parse the result field if it exists
+    if (parsed.result) {
+      try {
+        // The result might be a JSON string within a string
+        let resultStr = parsed.result;
+        debugLog(`📋 Raw result string: ${resultStr.substring(0, 100)}...`);
 
-    const finalizationTime = performance.now() - startFinalization;
-    debugLog(`⏱️ Finalisation took ${finalizationTime.toFixed(2)}ms`);
+        // Try to extract resultcode and EvtNo from the result string
+        const resultcodeMatch = resultStr.match(/"resultcode"\s*:\s*"([^"]*)"/) || 
+                               resultStr.match(/"resultcode"\s*:\s*(\d+)/);
+        const evtNoMatch = resultStr.match(/"EvtNo"\s*:\s*"([^"]*)"/) || 
+                          resultStr.match(/"EvtNo"\s*:\s*(\d+)/);
+        const errorMatch = resultStr.match(/"errormessage"\s*:\s*"([^"]*)"/);
 
-    if (code === "0" && evt) {
-      debugLog(`✅ SUCCESS - Event: ${evt}`);
-      updateProgress(100, "✅ Succès!");
+        if (resultcodeMatch) {
+          resultCode = resultcodeMatch[1];
+          debugLog(`✅ Extracted resultcode: ${resultCode}`);
+        }
+
+        if (evtNoMatch) {
+          eventNo = evtNoMatch[1];
+          debugLog(`✅ Extracted event: ${eventNo}`);
+        }
+
+        if (errorMatch) {
+          errorMessage = errorMatch[1];
+          debugLog(`📝 Error message: ${errorMessage}`);
+        }
+      } catch (e) {
+        debugLog(`⚠️ Error parsing result field: ${e.message}`);
+      }
+    }
+
+    // Determine success/failure
+    if (resultCode === "0" || parsed.error === 0) {
+      debugLog(`✅ SUCCESS - Event created successfully`);
+      if (eventNo) {
+        debugLog(`📌 Event Number: ${eventNo}`);
+        updateProgress(100, "✅ Succès!");
+        hideLoading();
+        showStatus(`🎉 Succès - Évènement: ${eventNo}`, "success");
+      } else if (errorMessage) {
+        debugLog(`✅ SUCCESS - ${errorMessage}`);
+        updateProgress(100, "✅ Succès!");
+        hideLoading();
+        showStatus(`🎉 Succès - ${errorMessage}`, "success");
+      } else {
+        updateProgress(100, "✅ Succès!");
+        hideLoading();
+        showStatus(`🎉 Succès - Votre demande a été traitée`, "success");
+      }
+    } else if (resultCode && resultCode !== "0") {
+      debugLog(`❌ API returned error code: ${resultCode}`);
+      showStatus(`❌ Erreur: Code ${resultCode}`, "error");
       hideLoading();
-      showStatus(`🎉 Succès — Évènement: ${evt}`, "success");
-    } else if (code && code !== "0") {
-      debugLog(`❌ API Error - Code: ${code}`);
-      updateProgress(100, "❌ Erreur");
-      hideLoading();
-      showStatus(`❌ Erreur API (Code: ${code})`, "error");
+      return;
     } else {
-      debugLog(`⚠️ Could not extract code or event`);
-      updateProgress(100, "⚠️ Réponse invalide");
+      debugLog(`⚠️ Could not extract result or event from response`);
+      debugLog(`📊 Full response: ${JSON.stringify(parsed)}`);
+      showStatus(`✅ Demande traitée`, "success");
       hideLoading();
-      showStatus(`⚠️ Réponse inattendue du serveur`, "warning");
     }
 
   } catch (err) {
@@ -1003,4 +1074,83 @@ async function send(type) {
   }
 }
 
+/* ======================
+   ACTIONS
+====================== */
+
+async function performAction(actionType) {
+  if (!cachedToken) {
+    debugLog("❌ No authentication token - cannot perform action");
+    showStatus("❌ Token non disponible", "error");
+    return;
+  }
+
+  showLoading();
+  updateProgress(10, "Préparation de l'action...");
+
+  try {
+    const user = Office.context.mailbox.userProfile.emailAddress;
+    const item = Office.context.mailbox.item;
+
+    // Build REST API payload for WebService/Execute
+    const actionPayload = {
+      action: "WEB_SERVICE_INFINITY",
+      access_token: cachedToken,
+      param: JSON.stringify({
+        action: { swinfinity: "dv_creation_evt" },
+        data: {
+          evenement: {
+            type: actionType,
+            utilisateur: user,
+            tiers: item.from?.emailAddress || "",
+            lib: item.subject || "",
+            pj: cachedPayload?.evenement?.pj || "",
+            evt_lie: cachedPayload?.evenement?.evt_lie || ""
+          }
+        }
+      })
+    };
+
+    debugLog(`📋 Action payload prepared:`);
+    debugLog(`  - Action type: ${actionType}`);
+    debugLog(`  - User: ${user}`);
+    debugLog(`  - Token: ${cachedToken.substring(0, 20)}...`);
+
+    updateProgress(50, "Envoi de l'action...");
+    debugLog(`🚀 Sending action to WebService/Execute...`);
+
+    const response = await fetch("https://maisondelarose.org/proxy/proxy.php", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(actionPayload)
+    });
+
+    updateProgress(80, "Traitement de la réponse...");
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    const result = await response.json();
+    debugLog(`✅ Action response: ${JSON.stringify(result).substring(0, 200)}`);
+
+    if (result.ok === true || result.token) {
+      debugLog(`✅ Action completed successfully`);
+      updateProgress(100, "✅ Succès!");
+      hideLoading();
+      showStatus(`🎉 Action réussie`, "success");
+    } else {
+      debugLog(`⚠️ Unexpected response: ${JSON.stringify(result)}`);
+      updateProgress(100, "✅ Complété");
+      hideLoading();
+      showStatus(`✅ Action traitée`, "success");
+    }
+
+  } catch (error) {
+    debugLog(`❌ Action error: ${error.message}`);
+    updateProgress(100, "❌ Erreur");
+    hideLoading();
+    showStatus(`❌ Erreur lors de l'action: ${error.message}`, "error");
+  }
+}
 
