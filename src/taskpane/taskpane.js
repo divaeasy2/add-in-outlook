@@ -52,9 +52,9 @@ Office.onReady(() => {
     enableButtons(); // Enable buttons from the start
     showStatus("✅ Add-in prêt - Cliquez sur une action pour continuer", "success");
     prepareEmail();
-    debugLog("✅ Add-in initialized. Token will be fetched on first action.");
+    debugLog("✅ Module complémentaire initialisé. Le jeton sera récupéré à la première action.");
   } catch (error) {
-    debugLog(`❌ Failed to initialize: ${error}`);
+    debugLog(`❌ Échec de l'initialisation: ${error}`);
     showStatus(`❌ Erreur d'initialisation: ${error}`, "error");
     disableButtons();
   }
@@ -204,7 +204,7 @@ async function getEmailWithOfficeApi() {
     if (item.getCallbackTokenAsync) {
       item.getCallbackTokenAsync({ isRest: true }, (result) => {
         if (result.status === Office.AsyncResultStatus.Succeeded) {
-          debugLog("✅ Token obtained");
+          debugLog("✅ Jeton obtenu");
           resolve({
             success: true,
             token: result.value,
@@ -212,7 +212,7 @@ async function getEmailWithOfficeApi() {
             emailAddress: Office.context.mailbox.userProfile.emailAddress
           });
         } else {
-          debugLog("⚠️ Token error: " + result.error.message);
+          debugLog("⚠️ Erreur de jeton: " + result.error.message);
           resolve({
             success: false,
             messageId: item.itemId
@@ -220,7 +220,7 @@ async function getEmailWithOfficeApi() {
         }
       });
     } else {
-      debugLog("⚠️ Token error: t.getCallbackTokenAsync is not a function");
+      debugLog("⚠️ Erreur de jeton: t.getCallbackTokenAsync n'est pas une fonction");
       resolve({
         success: false,
         messageId: item.itemId
@@ -260,7 +260,7 @@ async function getEmailContent() {
       if (res.status === Office.AsyncResultStatus.Succeeded && res.value) {
         emailData.body = res.value;
         emailData.bodyType = "html";
-        debugLog("✅ Email body retrieved (HTML)");
+        debugLog("✅ Corps de l'email récupéré (HTML)");
         bodyLoaded = true;
       } else {
         // Fallback to plain text
@@ -268,10 +268,10 @@ async function getEmailContent() {
           if (textRes.status === Office.AsyncResultStatus.Succeeded) {
             emailData.body = textRes.value;
             emailData.bodyType = "text";
-            debugLog("✅ Email body retrieved (Text - fallback)");
+            debugLog("✅ Corps de l'email récupéré (Texte - alternative)");
           } else {
-            debugLog("⚠️ Body retrieval failed");
-            emailData.body = "[Unable to retrieve body]";
+            debugLog("⚠️ Échec de la récupération du corps");
+            emailData.body = "[Impossible de récupérer le corps]";
           }
           bodyLoaded = true;
           checkComplete();
@@ -284,14 +284,14 @@ async function getEmailContent() {
 
     // Get attachments
     if (item.attachments && item.attachments.length > 0) {
-      debugLog(`📎 Found ${item.attachments.length} attachment(s)`);
+      debugLog(`📎 ${item.attachments.length} pièce(s) jointe(s) trouvée(s)`);
       let loadedCount = 0;
       
       item.attachments.forEach((att, idx) => {
         try {
           // Get attachment data
           item.getAttachmentContentAsync(att.id, (result) => {
-            debugLog(`📥 Processing attachment: ${att.name}`);
+            debugLog(`📥 Traitement de la pièce jointe: ${att.name}`);
             
             if (result.status === Office.AsyncResultStatus.Succeeded) {
               try {
@@ -424,10 +424,10 @@ async function getEmailContent() {
                   debugLog(`⚠️ Base64 data is empty for ${att.name}`);
                 }
               } catch (encodeErr) {
-                debugLog(`❌ Failed to encode attachment ${att.name}: ${encodeErr.message}`);
+                debugLog(`❌ Échec de l'encodage de la pièce jointe ${att.name}: ${encodeErr.message}`);
               }
             } else {
-              debugLog(`⚠️ Failed to load attachment: ${att.name}`);
+              debugLog(`⚠️ Échec du chargement de la pièce jointe: ${att.name}`);
               if (result.error) debugLog(`   Error: ${result.error.message}`);
             }
             
@@ -905,21 +905,21 @@ async function send(type) {
     showStatus("⌛ Récupération des données...", "info");
 
     // Step 1: Get Office API messageId
-    debugLog("📝 Step 1: Retrieving Office API message ID...");
-    updateProgress(15, "Récupération de l'ID message...");
+    debugLog("📝 Étape 1: Récupération de l'ID du message API Office...");
+    updateProgress(15, "Récupération de l'ID du message...");
     const tokenData = await getEmailWithOfficeApi();
     
     if (tokenData.success) {
-      debugLog(`✅ Office token obtained for: ${tokenData.emailAddress}`);
+      debugLog(`✅ Jeton Office obtenu pour: ${tokenData.emailAddress}`);
       debugLog(`📧 Message ID: ${tokenData.messageId}`);
       cachedPayload.evenement.messageId = tokenData.messageId;
     } else {
-      debugLog(`⚠️ Office token unavailable, using fallback ID`);
+      debugLog(`⚠️ Jeton Office non disponible, utilisation de l'ID alternatif`);
       cachedPayload.evenement.messageId = item.itemId;
     }
 
     // Step 2: Get email content with attachments
-    debugLog("📧 Step 2: Retrieving email content and attachments...");
+    debugLog("📧 Étape 2: Récupération du contenu de l'email et des pièces jointes...");
     updateProgress(25, "Lecture du contenu de l'email...");
     const emailContent = await getEmailContent();
     
@@ -932,22 +932,22 @@ async function send(type) {
         debugLog(`   - ${att.name} (${att.contentType})`);
       });
     } else {
-      debugLog(`📎 No attachments`);
+      debugLog(`📎 Aucune pièce jointe`);
     }
     
     // Step 3: Build email in base64 format
-    debugLog("🔐 Step 3: Encoding email to base64...");
+    debugLog("🔐 Étape 3: Encodage de l'email en base64...");
     updateProgress(50, "Encodage de l'email...");
     const emailBase64 = buildEmailBase64(item, emailContent);
     
     if (!emailBase64) {
-      debugLog("⚠️ Email too large, sending without attachments");
+      debugLog("⚠️ Email trop volumineux, envoi sans pièces jointes");
       cachedPayload.evenement.pj = "";
     } else {
-      debugLog(`✅ Email encoded: ${emailBase64.length} bytes`);
+      debugLog(`✅ Email encodé: ${emailBase64.length} octets`);
       const sizeMB = (emailBase64.length / 1024 / 1024).toFixed(2);
       if (emailBase64.length > 1000000) {
-        debugLog(`⚠️ Large payload detected: ${sizeMB}MB`);
+        debugLog(`⚠️ Payload volumineux détecté: ${sizeMB}MB`);
       }
       cachedPayload.evenement.pj = emailBase64;
     }
@@ -956,7 +956,7 @@ async function send(type) {
     cachedPayload.evenement.evt_lie = cachedPayload.evenement.evt_lie || "";
 
     // Step 4: Prepare and send REST API request
-    debugLog(`🚀 Step 4: Preparing REST API call (type: ${type})...`);
+    debugLog(`🚀 Étape 4: Préparation de l'appel API REST (type: ${type})...`);
     updateProgress(70, "Préparation du payload...");
     showStatus("🚀 Envoi vers l'API...", "info");
 
@@ -970,8 +970,8 @@ async function send(type) {
       })
     };
 
-    debugLog(`📋 Payload structure: action=${restPayload.action}, token=${restPayload.access_token.substring(0, 20)}...`);
-    debugLog(`📄 Event parameters: type=${type}, user=${cachedPayload.evenement.utilisateur}`);
+    debugLog(`📋 Structure du payload: action=${restPayload.action}, token=${restPayload.access_token.substring(0, 20)}...`);
+    debugLog(`📄 Paramètres d'événement: type=${type}, utilisateur=${cachedPayload.evenement.utilisateur}`);
 
     updateProgress(75, "Transmission vers le serveur...");
     
@@ -984,16 +984,16 @@ async function send(type) {
     });
     
     const totalFetchTime = performance.now() - startFetch;
-    debugLog(`⏱️ API request took ${totalFetchTime.toFixed(2)}ms`);
-    debugLog(`📊 Response status: ${res.status}`);
+    debugLog(`⏱️ Requête API effectuée en ${totalFetchTime.toFixed(2)}ms`);
+    debugLog(`📊 Statut de la réponse: ${res.status}`);
     
     // Step 5: Parse response
     updateProgress(90, "Traitement de la réponse...");
     const text = await res.text();
-    debugLog(`📥 Response size: ${text.length} bytes`);
+    debugLog(`📥 Taille de la réponse: ${text.length} octets`);
 
     if (!res.ok) {
-      debugLog(`❌ Server error: HTTP ${res.status}`);
+      debugLog(`❌ Erreur serveur: HTTP ${res.status}`);
       debugLog(`Response: ${text.substring(0, 300)}`);
       showStatus(`❌ Erreur serveur (${res.status})`, "error");
       hideLoading();
@@ -1003,9 +1003,9 @@ async function send(type) {
     let parsed;
     try {
       parsed = JSON.parse(text);
-      debugLog(`✅ Response parsed successfully`);
+      debugLog(`✅ Réponse analysée avec succès`);
     } catch (e) {
-      debugLog(`❌ JSON parse error: ${e.message}`);
+      debugLog(`❌ Erreur d'analyse JSON: ${e.message}`);
       debugLog(`Raw response: ${text.substring(0, 200)}`);
       showStatus("❌ Réponse invalide du serveur", "error");
       hideLoading();
@@ -1014,7 +1014,7 @@ async function send(type) {
 
     // Step 6: Extract and validate response
     updateProgress(95, "Finalisation...");
-    debugLog(`🔍 Analyzing response: ${JSON.stringify(parsed)}`);
+    debugLog(`🔍 Analyse de la réponse: ${JSON.stringify(parsed)}`);
 
     // Parse the response structure - it may contain nested JSON strings
     let resultCode = null;
@@ -1023,7 +1023,7 @@ async function send(type) {
 
     // Check for error code at top level
     if (parsed.error !== undefined && parsed.error !== 0) {
-      debugLog(`❌ API returned error code: ${parsed.error}`);
+      debugLog(`❌ L'API a renvoyé le code d'erreur: ${parsed.error}`);
       showStatus(`❌ Erreur serveur (${parsed.error})`, "error");
       hideLoading();
       return;
@@ -1034,7 +1034,7 @@ async function send(type) {
       try {
         // The result might be a JSON string within a string
         let resultStr = parsed.result;
-        debugLog(`📋 Raw result string: ${resultStr.substring(0, 100)}...`);
+        debugLog(`📋 Chaîne de résultat brute: ${resultStr.substring(0, 100)}...`);
 
         // Try to extract resultcode and EvtNo from the result string
         const resultcodeMatch = resultStr.match(/"resultcode"\s*:\s*"([^"]*)"/) || 
@@ -1045,12 +1045,12 @@ async function send(type) {
 
         if (resultcodeMatch) {
           resultCode = resultcodeMatch[1];
-          debugLog(`✅ Extracted resultcode: ${resultCode}`);
+          debugLog(`✅ Code de résultat extrait: ${resultCode}`);
         }
 
         if (evtNoMatch) {
           eventNo = evtNoMatch[1];
-          debugLog(`✅ Extracted event: ${eventNo}`);
+          debugLog(`✅ Événement extrait: ${eventNo}`);
         }
 
         if (errorMatch) {
@@ -1058,42 +1058,70 @@ async function send(type) {
           debugLog(`📝 Error message: ${errorMessage}`);
         }
       } catch (e) {
-        debugLog(`⚠️ Error parsing result field: ${e.message}`);
+        debugLog(`⚠️ Erreur lors de l'analyse du champ de résultat: ${e.message}`);
       }
     }
 
-    // Determine success/failure
-    if (resultCode === "0" || parsed.error === 0) {
-      debugLog(`✅ SUCCESS - Event created successfully`);
-      if (eventNo) {
-        debugLog(`📌 Event Number: ${eventNo}`);
-        updateProgress(100, "✅ Succès!");
-        hideLoading();
-        showStatus(`🎉 Succès - Évènement: ${eventNo}`, "success");
-      } else if (errorMessage) {
-        debugLog(`✅ SUCCESS - ${errorMessage}`);
-        updateProgress(100, "✅ Succès!");
-        hideLoading();
-        showStatus(`🎉 Succès - ${errorMessage}`, "success");
+    // Determine success/failure - prioritize extracted resultCode over parsed.error
+    if (resultCode) {
+      // We extracted a resultCode, use it to determine success/failure
+      if (resultCode === "0") {
+        // Success case
+        debugLog(`✅ SUCCÈS - Événement créé avec succès`);
+        if (eventNo) {
+          debugLog(`📌 Numéro d'événement: ${eventNo}`);
+          updateProgress(100, "✅ Succès!");
+          hideLoading();
+          showStatus(`🎉 Succès - Évènement: ${eventNo}`, "success");
+        } else if (errorMessage) {
+          // If we have additional info in errormessage, show it as part of success
+          debugLog(`📝 Informations: ${errorMessage}`);
+          updateProgress(100, "✅ Succès!");
+          hideLoading();
+          showStatus(`🎉 Succès - ${errorMessage}`, "success");
+        } else {
+          updateProgress(100, "✅ Succès!");
+          hideLoading();
+          showStatus(`🎉 Succès - Votre demande a été traitée`, "success");
+        }
       } else {
-        updateProgress(100, "✅ Succès!");
+        // Error case - resultcode is not 0
+        debugLog(`❌ ERREUR - L'API a renvoyé le code d'erreur: ${resultCode}`);
+        let errorMsg = errorMessage || `Code ${resultCode}`;
+        updateProgress(100, "❌ Erreur");
         hideLoading();
-        showStatus(`🎉 Succès - Votre demande a été traitée`, "success");
+        showStatus(`❌ ${errorMsg}`, "error");
+        return;
       }
-    } else if (resultCode && resultCode !== "0") {
-      debugLog(`❌ API returned error code: ${resultCode}`);
-      showStatus(`❌ Erreur: Code ${resultCode}`, "error");
+    } else if (parsed.error === 0) {
+      // No resultCode extracted, but parsed.error is 0, treat as success
+      debugLog(`✅ SUCCÈS - Demande traitée avec succès`);
+      updateProgress(100, "✅ Succès!");
       hideLoading();
+      showStatus(`🎉 Succès - Votre demande a été traitée`, "success");
+    } else if (parsed.error !== 0) {
+      // API returned error code at top level
+      debugLog(`❌ ERREUR - L'API a renvoyé le code d'erreur: ${parsed.error}`);
+      updateProgress(100, "❌ Erreur");
+      hideLoading();
+      showStatus(`❌ Erreur serveur (${parsed.error})`, "error");
+      return;
+    } else if (errorMessage) {
+      // Error indicated by errormessage field when resultcode is not extracted
+      debugLog(`❌ ERREUR - Le serveur a renvoyé un message d'erreur: ${errorMessage}`);
+      updateProgress(100, "❌ Erreur");
+      hideLoading();
+      showStatus(`❌ ${errorMessage}`, "error");
       return;
     } else {
-      debugLog(`⚠️ Could not extract result or event from response`);
-      debugLog(`📊 Full response: ${JSON.stringify(parsed)}`);
+      debugLog(`⚠️ Impossible d'extraire le résultat ou l'événement de la réponse`);
+      debugLog(`📊 Réponse complète: ${JSON.stringify(parsed)}`);
       showStatus(`✅ Demande traitée`, "success");
       hideLoading();
     }
 
   } catch (err) {
-    debugLog("❌ Fetch error: " + err.message);
+    debugLog("❌ Erreur de récupération: " + err.message);
     updateProgress(100, "❌ Erreur");
     hideLoading();
     showStatus("❌ Erreur de communication", "error");

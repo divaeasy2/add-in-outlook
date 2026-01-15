@@ -146,8 +146,8 @@ try {
 
         logDebug("✅ Database connected");
 
-        // Fetch credentials from database
-        $stmt = $conn->prepare("SELECT domain, user, password, env FROM `auth-add-in` LIMIT 1");
+        // Fetch credentials and API URLs from database
+        $stmt = $conn->prepare("SELECT domain, user, password, env, auth_api, action_api FROM `auth-add-in` LIMIT 1");
         if (!$stmt) {
             throw new Exception("Database query failed: " . $conn->error);
         }
@@ -164,6 +164,10 @@ try {
         // Decrypt the password from database
         $decryptedPassword = decryptPassword($row['password']);
         
+        // Get API URLs from database
+        $authUrl = $row['auth_api'];
+        $executionUrl = $row['action_api'];
+        
         $creds = [
             'domain' => $row['domain'],
             'user' => $row['user'],
@@ -172,12 +176,13 @@ try {
         ];
 
         logDebug("✅ Credentials fetched and password decrypted");
+        logDebug("🔗 Auth API URL: " . $authUrl);
+        logDebug("🔗 Action API URL: " . $executionUrl);
 
         $stmt->close();
         $conn->close();
 
         // Forward to Authent/Auth endpoint
-        $authUrl = "https://remote.divy-si.fr:8443/DhsDivaltoServiceDivaApiRest/api/v1/Authent/Auth";
         logDebug("📤 Calling Auth API: " . $authUrl);
 
         $ch = curl_init($authUrl);
@@ -224,7 +229,44 @@ try {
         // Action request - forward to WebService/Execute
         logDebug("⚡ Action request detected");
         
-        $executionUrl = "https://remote.divy-si.fr:8443/DhsDivaltoServiceDivaApiRest/api/v1/WebService/Execute";
+        // Database connection for action request
+        $dbHost = getenv('DB_HOST');
+        $dbUser = getenv('DB_USER');
+        $dbPass = getenv('DB_PASS');
+        $dbName = getenv('DB_NAME');
+        
+        if (!$dbHost) {
+            $dbHost = 'maisogv978.mysql.db';
+            $dbUser = 'maisogv978';
+            $dbPass = 'DivaEasy2025';
+            $dbName = 'maisogv978';
+        }
+        
+        $conn = new mysqli($dbHost, $dbUser, $dbPass, $dbName);
+        if ($conn->connect_error) {
+            throw new Exception("Database connection failed: " . $conn->connect_error);
+        }
+        
+        $stmt = $conn->prepare("SELECT action_api FROM `auth-add-in` LIMIT 1");
+        if (!$stmt) {
+            throw new Exception("Database query failed: " . $conn->error);
+        }
+        
+        $stmt->execute();
+        $result = $stmt->get_result();
+        
+        if ($result->num_rows === 0) {
+            throw new Exception("No API configuration found in database");
+        }
+        
+        $row = $result->fetch_assoc();
+        $executionUrl = $row['action_api'];
+        
+        logDebug("🔗 Action API URL: " . $executionUrl);
+        
+        $stmt->close();
+        $conn->close();
+        
         logDebug("📤 Calling WebService/Execute: " . $executionUrl);
 
         $ch = curl_init($executionUrl);
