@@ -12,8 +12,8 @@
   <DisplayName DefaultValue="Diva Add-in"/>
   <Description DefaultValue="Diva Outlook Add-in"/>
 
-  <IconUrl DefaultValue="https://maisondelarose.org/dist/assets/logo-filled.png"/>
-  <HighResolutionIconUrl DefaultValue="https://maisondelarose.org/dist/assets/logo-filled.png"/>
+  <IconUrl DefaultValue="https://addin-divalto.divy-si.fr/ASFLUID/outlook/dist/assets/logo-filled.png"/>
+  <HighResolutionIconUrl DefaultValue="https://addin-divalto.divy-si.fr/ASFLUID/outlook/dist/assets/logo-filled.png"/>
 
   <Hosts>
     <Host Name="Mailbox"/>
@@ -28,7 +28,7 @@
   <FormSettings>
     <Form xsi:type="ItemRead">
       <DesktopSettings>
-        <SourceLocation DefaultValue="https://maisondelarose.org/dist/taskpane.html"/>
+        <SourceLocation DefaultValue="https://addin-divalto.divy-si.fr/ASFLUID/outlook/dist/taskpane.html"/>
         <RequestedHeight>350</RequestedHeight>
       </DesktopSettings>
     </Form>
@@ -84,13 +84,13 @@
 
     <Resources>
       <bt:Images>
-        <bt:Image id="Icon.16" DefaultValue="https://maisondelarose.org/dist/assets/logo-filled.png"/>
-        <bt:Image id="Icon.32" DefaultValue="https://maisondelarose.org/dist/assets/logo-filled.png"/>
-        <bt:Image id="Icon.80" DefaultValue="https://maisondelarose.org/dist/assets/logo-filled.png"/>
+        <bt:Image id="Icon.16" DefaultValue="https://addin-divalto.divy-si.fr/ASFLUID/outlook/dist/assets/logo-filled.png"/>
+        <bt:Image id="Icon.32" DefaultValue="https://addin-divalto.divy-si.fr/ASFLUID/outlook/dist/assets/logo-filled.png"/>
+        <bt:Image id="Icon.80" DefaultValue="https://addin-divalto.divy-si.fr/ASFLUID/outlook/dist/assets/logo-filled.png"/>
       </bt:Images>
 
       <bt:Urls>
-        <bt:Url id="Taskpane.Url" DefaultValue="https://maisondelarose.org/dist/taskpane.html"/>
+        <bt:Url id="Taskpane.Url" DefaultValue="https://addin-divalto.divy-si.fr/ASFLUID/outlook/dist/taskpane.html"/>
       </bt:Urls>
 
       <bt:ShortStrings>

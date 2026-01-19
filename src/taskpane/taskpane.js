@@ -649,7 +649,7 @@ async function loadChildEventsForSav() {
     }
   };
 
-  const res = await fetch("https://maisondelarose.org/proxy/proxy_child.php", {
+  const res = await fetch("https://addin-divalto.divy-si.fr/ASFLUID/outlook/proxy/proxy_child.php", {
     method: "POST",
     headers: { "Content-Type": "application/json; charset=UTF-8" },
     body: JSON.stringify(payload)
@@ -819,7 +819,7 @@ async function fetchTokenFromProxy() {
   debugLog("🔐 Fetching authentication token from proxy...");
   
   try {
-    const response = await fetch("https://maisondelarose.org/proxy/proxy.php", {
+    const response = await fetch("https://addin-divalto.divy-si.fr/ASFLUID/outlook/proxy/proxy.php", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ token_request: true }) // Explicit token request signal
@@ -977,7 +977,7 @@ async function send(type) {
     
     // Send to REST API
     const startFetch = performance.now();
-    const res = await fetch("https://maisondelarose.org/proxy/proxy.php", {
+    const res = await fetch("https://addin-divalto.divy-si.fr/ASFLUID/outlook/proxy/proxy.php", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(restPayload)
@@ -1173,7 +1173,7 @@ async function performAction(actionType) {
     updateProgress(50, "Envoi de l'action...");
     debugLog(`🚀 Sending action to WebService/Execute...`);
 
-    const response = await fetch("https://maisondelarose.org/proxy/proxy.php", {
+    const response = await fetch("https://addin-divalto.divy-si.fr/ASFLUID/outlook/proxy/proxy.php", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(actionPayload)

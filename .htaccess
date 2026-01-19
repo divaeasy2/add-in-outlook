@@ -1,0 +1,17 @@
+# Protect .env file from direct access
+<Files ".env">
+    Order allow,deny
+    Deny from all
+</Files>
+
+# Protect proxy directory files
+<FilesMatch "\.php$">
+    Allow from all
+</FilesMatch>
+
+# Allow CORS for proxy requests
+<IfModule mod_headers.c>
+    Header always set Access-Control-Allow-Origin "*"
+    Header always set Access-Control-Allow-Methods "POST, GET, OPTIONS"
+    Header always set Access-Control-Allow-Headers "Content-Type"
+</IfModule>
