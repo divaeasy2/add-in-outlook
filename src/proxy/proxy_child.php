@@ -1,7 +1,50 @@
 <?php
+// proxy_child.php - REST API for fetching linked events
+
 header("Content-Type: application/json");
 header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Headers: Content-Type");
+
+error_reporting(E_ALL);
+ini_set('display_errors', 0);
+
+// Log file for debugging
+$logFile = __DIR__ . '/proxy_debug.log';
+
+function logDebug($message) {
+    global $logFile;
+    $timestamp = date('Y-m-d H:i:s');
+    file_put_contents($logFile, "[$timestamp] $message\n", FILE_APPEND);
+}
+
+function decryptPassword($encryptedPassword) {
+    $encryptionKeyString = getenv('ENCRYPTION_KEY') ?: 'divalto2025';
+    
+    $encryptionKey = substr(str_pad($encryptionKeyString, 32, '!'), 0, 32);
+    
+    // Decode from base64
+    $decodedPassword = base64_decode($encryptedPassword, true);
+    if ($decodedPassword === false) {
+        throw new Exception("Failed to decode encrypted password");
+    }
+    
+    // Extract IV (first 16 bytes) and encrypted data
+    if (strlen($decodedPassword) < 16) {
+        throw new Exception("Invalid encrypted password format");
+    }
+    
+    $iv = substr($decodedPassword, 0, 16);
+    $encrypted = substr($decodedPassword, 16);
+    
+    // Decrypt
+    $decrypted = openssl_decrypt($encrypted, 'AES-256-CBC', $encryptionKey, OPENSSL_RAW_DATA, $iv);
+    
+    if ($decrypted === false) {
+        throw new Exception("Failed to decrypt password: " . openssl_error_string());
+    }
+    
+    return trim($decrypted);
+}
 
 if ($_SERVER["REQUEST_METHOD"] !== "POST") {
     http_response_code(405);
@@ -9,32 +52,207 @@ if ($_SERVER["REQUEST_METHOD"] !== "POST") {
     exit;
 }
 
-$body = file_get_contents("php://input");
-if(!$body){
+$input = file_get_contents("php://input");
+if (!$input) {
     http_response_code(400);
     echo json_encode(["error"=>"Empty body"]);
     exit;
 }
 
-$apiUrl = "https://remote.divy-si.fr:8443/DhsDivaltoServiceDivaApiRest/api/v1/Webhook/034CFA063EB54E99A574955F88B68828050D7209";
+logDebug("📨 Incoming request: " . substr($input, 0, 200));
 
-$ch = curl_init($apiUrl);
-curl_setopt_array($ch, [
-    CURLOPT_POST => true,
-    CURLOPT_POSTFIELDS => $body,
-    CURLOPT_RETURNTRANSFER => true,
-    CURLOPT_HTTPHEADER => ["Content-Type: application/json"],
-    CURLOPT_SSL_VERIFYPEER => false,
-    CURLOPT_SSL_VERIFYHOST => false
-]);
+try {
+    $data = json_decode($input, true);
+    
+    if ($data === null) {
+        throw new Exception("Invalid JSON payload");
+    }
 
-$response = curl_exec($ch);
-$err = curl_error($ch);
-curl_close($ch);
+    // Load environment variables from .env file
+    $envPaths = [
+        __DIR__ . '/../../.env',        
+        __DIR__ . '/../../../.env',    
+        '/var/www/html/.env',          
+        getenv('HOME') . '/.env',       
+    ];
 
-if($response === false){
-    echo json_encode(["error"=>"curl error", "details"=>$err]);
+    $envFile = null;
+    foreach ($envPaths as $path) {
+        if (file_exists($path)) {
+            $envFile = $path;
+            break;
+        }
+    }
+
+    if ($envFile) {
+        $envLines = file($envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+        foreach ($envLines as $line) {
+            if (strpos($line, '=') !== false && $line[0] !== '#') {
+                list($key, $value) = explode('=', $line, 2);
+                $key = trim($key);
+                $value = trim($value);
+                if (!getenv($key)) {
+                    putenv("$key=$value");
+                }
+            }
+        }
+    }
+
+    // Database connection
+    $dbHost = getenv('DB_HOST');
+    $dbUser = getenv('DB_USER');
+    $dbPass = getenv('DB_PASS');
+    $dbName = getenv('DB_NAME');
+    
+    // Fallback if variables are not set
+    if (!$dbHost) {
+        $dbHost = 'localhost';
+        $dbUser = 'DivyAddIN';
+        $dbPass = 'i$aKtRG48hjffr0?2';
+        $dbName = 'DivyADDIN';
+    }
+
+    $conn = new mysqli($dbHost, $dbUser, $dbPass, $dbName);
+    if ($conn->connect_error) {
+        throw new Exception("Database connection failed: " . $conn->connect_error);
+    }
+
+    // Fetch credentials from database
+    $stmt = $conn->prepare("SELECT domain, user, password, env, auth_api, action_api FROM `auth-add-in` LIMIT 1");
+    if (!$stmt) {
+        throw new Exception("Database query failed: " . $conn->error);
+    }
+
+    $stmt->execute();
+    $result = $stmt->get_result();
+
+    if ($result->num_rows === 0) {
+        throw new Exception("No credentials found in database");
+    }
+
+    $row = $result->fetch_assoc();
+    
+    // Decrypt the password from database
+    $decryptedPassword = decryptPassword($row['password']);
+    
+    // Get API URLs from database, fallback to .env or defaults
+    $authUrl = $row['auth_api'] ?: (getenv('AUTH_API'));;
+    $executionUrl = $row['action_api'] ?: (getenv('ACTION_API'));
+    
+    if (empty($authUrl) || empty($executionUrl)) {
+        throw new Exception("API URLs not configured");
+    }
+    
+    $creds = [
+        'domain' => $row['domain'],
+        'user' => $row['user'],
+        'password' => $decryptedPassword,
+        'env' => $row['env']
+    ];
+
+    $stmt->close();
+    $conn->close();
+
+    // Step 1: Get a fresh token from Auth API
+    logDebug("📤 Calling Auth API: " . $authUrl);
+
+    $ch = curl_init($authUrl);
+    curl_setopt_array($ch, [
+        CURLOPT_POST => true,
+        CURLOPT_HTTPHEADER => ["Content-Type: application/json"],
+        CURLOPT_POSTFIELDS => json_encode($creds),
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_SSL_VERIFYPEER => false,
+        CURLOPT_SSL_VERIFYHOST => false,
+        CURLOPT_TIMEOUT => 30,
+        CURLOPT_CONNECTTIMEOUT => 10
+    ]);
+
+    $tokenResponse = curl_exec($ch);
+    $error = curl_error($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    if ($tokenResponse === false) {
+        throw new Exception("Failed to reach Auth API: " . $error);
+    }
+
+    logDebug("🔙 Auth API Response (HTTP $httpCode): " . substr($tokenResponse, 0, 200));
+
+    $tokenData = json_decode($tokenResponse, true);
+    if (!$tokenData) {
+        throw new Exception("Invalid JSON response from Auth API");
+    }
+
+    if ($tokenData['error'] != 0) {
+        throw new Exception("Auth API returned error: " . ($tokenData['error'] ?? 'Unknown'));
+    }
+
+    $token = $tokenData['access_token'];
+    logDebug("✅ Token retrieved successfully");
+
+    // Step 2: Build the linked events request body
+    $utilizador = $data['evenement']['utilisateur'] ?? '';
+    $tiers = $data['evenement']['tiers'] ?? '';
+    $realizeOkFilter = $data['evenement']['RealiseOk'] ?? 0;
+    
+    // Determine the RealiseOk filter value
+    // 0 = available only, 1 = all events
+    $realizeOkValue = ($realizeOkFilter == 1) ? 'realiseOkFilter' : '';
+
+    $linkedEventsPayload = [
+        "action" => "WEB_SERVICE_INFINITY",
+        "access_token" => $token,
+        "param" => json_encode([
+            "action" => [
+                "swinfinity" => "dv_lister_evt"
+            ],
+            "data" => [
+                "evenement" => [
+                    "utilisateur" => $utilizador,
+                    "tiers" => $tiers,
+                    "RealiseOk" => $realizeOkValue
+                ]
+            ]
+        ])
+    ];
+
+    logDebug("📤 Calling WebService/Execute for linked events");
+    logDebug("   Utilisateur: " . $utilizador);
+    logDebug("   Tiers: " . $tiers);
+    logDebug("   RealiseOk Filter: " . $realizeOkValue);
+
+    // Step 3: Call the WebService/Execute endpoint
+    $ch = curl_init($executionUrl);
+    curl_setopt_array($ch, [
+        CURLOPT_POST => true,
+        CURLOPT_HTTPHEADER => ["Content-Type: application/json"],
+        CURLOPT_POSTFIELDS => json_encode($linkedEventsPayload),
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_SSL_VERIFYPEER => false,
+        CURLOPT_SSL_VERIFYHOST => false,
+        CURLOPT_TIMEOUT => 60,
+        CURLOPT_CONNECTTIMEOUT => 10
+    ]);
+
+    $response = curl_exec($ch);
+    $error = curl_error($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    if ($response === false) {
+        throw new Exception("Failed to reach WebService API: " . $error);
+    }
+
+    logDebug("🔙 WebService Response (HTTP $httpCode): " . substr($response, 0, 200));
+
+    echo $response;
     exit;
-}
 
-echo json_encode(["raw"=>$response]);
+} catch (Exception $e) {
+    logDebug("❌ Error: " . $e->getMessage());
+    http_response_code(500);
+    echo json_encode([
+        "error" => $e->getMessage()
+    ]);
+}

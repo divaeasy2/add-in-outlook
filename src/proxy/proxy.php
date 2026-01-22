@@ -165,8 +165,8 @@ try {
         $decryptedPassword = decryptPassword($row['password']);
         
         // Get API URLs from database, fallback to .env or defaults
-        $authUrl = $row['auth_api'] ?: (getenv('AUTH_API') ?: 'https://remote.divy-si.fr:8443/DhsDivaltoServiceDivaApiRest/api/v1/Authent/Auth');
-        $executionUrl = $row['action_api'] ?: (getenv('ACTION_API') ?: 'https://remote.divy-si.fr:8443/DhsDivaltoServiceDivaApiRest/api/v1/WebService/Execute');
+        $authUrl = $row['auth_api'] ?: (getenv('AUTH_API'));
+        $executionUrl = $row['action_api'] ?: (getenv('ACTION_API'));
         
         // Validate URLs are not empty
         if (empty($authUrl) || empty($executionUrl)) {
@@ -265,7 +265,7 @@ try {
         }
         
         $row = $result->fetch_assoc();
-        $executionUrl = $row['action_api'] ?: (getenv('ACTION_API') ?: 'https://remote.divy-si.fr:8443/DhsDivaltoServiceDivaApiRest/api/v1/WebService/Execute');
+        $executionUrl = $row['action_api'] ?: (getenv('ACTION_API'));
         
         // Validate URL is not empty
         if (empty($executionUrl)) {

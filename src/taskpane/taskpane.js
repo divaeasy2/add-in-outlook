@@ -622,10 +622,12 @@ function debugLog(msg){
 
 function showSavOptions() {
   document.getElementById("savOptionsModal").style.display = "block";
+  disablePrimaryButtons();
 }
 
 function hideSavOptions() {
   document.getElementById("savOptionsModal").style.display = "none";
+  enablePrimaryButtons();
   showStatus("");
   document.getElementById("status").style.display = "none";
 }
@@ -675,6 +677,7 @@ async function loadChildEventsForSav() {
   // Hide options modal and show child events popup
   document.getElementById("savOptionsModal").style.display = "none";
   popup.style.display = "block";
+  disablePrimaryButtons();
   
   // Reset checkbox state
   showAllCheckbox.checked = realiseOkFilter === 1;
@@ -771,6 +774,7 @@ function confirmLinkedEvent() {
   document.getElementById("confirmLinkedText").innerText = 
     `Confirmer l'évènement:\n${eventText}`;
   document.getElementById("confirmLinkedModal").style.display = "block";
+  disablePrimaryButtons();
 }
 
 async function sendWithLinkedEvent() {
@@ -784,15 +788,18 @@ function returnFromConfirmation() {
   
   // Show child events popup again
   document.getElementById("childPopup").style.display = "block";
+  disablePrimaryButtons();
   showStatus("⏳ Retour à la sélection...", "info");
 }
 
 function returnFromLinkedEvents() {
   document.getElementById("childPopup").style.display = "none";
+  enablePrimaryButtons();
   cachedPayload.evenement.evt_lie = "";
   
   // Show options modal again
   document.getElementById("savOptionsModal").style.display = "block";
+  disablePrimaryButtons();
   showStatus("");
   document.getElementById("status").style.display = "none";
 }
@@ -873,6 +880,30 @@ function disableButtons() {
     btn.style.opacity = "0.5";
   });
   debugLog("⛔ All action buttons disabled");
+}
+
+function disablePrimaryButtons() {
+  // Disable only the main action buttons (not popup buttons)
+  const primaryBtns = ["btnSav", "btnComm", "btnDDP", "btnCDE", "btnDDI"];
+  primaryBtns.forEach((id) => {
+    const btn = document.getElementById(id);
+    if (btn) {
+      btn.disabled = true;
+      btn.style.opacity = "0.5";
+    }
+  });
+}
+
+function enablePrimaryButtons() {
+  // Enable only the main action buttons (not popup buttons)
+  const primaryBtns = ["btnSav", "btnComm", "btnDDP", "btnCDE", "btnDDI"];
+  primaryBtns.forEach((id) => {
+    const btn = document.getElementById(id);
+    if (btn) {
+      btn.disabled = false;
+      btn.style.opacity = "1";
+    }
+  });
 }
 
 /* ======================
