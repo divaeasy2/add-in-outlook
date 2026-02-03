@@ -1,9 +1,12 @@
 <?php
 // proxy.php - REST API Token Retrieval & Action Handler
 
-header("Content-Type: application/json");
+header("Content-Type: application/json; charset=utf-8");
 header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Headers: Content-Type");
+
+// Set default charset for all string operations
+ini_set('default_charset', 'utf-8');
 
 error_reporting(E_ALL);
 ini_set('display_errors', 0);
@@ -143,6 +146,9 @@ try {
             logDebug("❌ DB Connection Error: " . $conn->connect_error);
             throw new Exception("Database connection failed: " . $conn->connect_error);
         }
+
+        // Set charset to utf8mb4 for proper character encoding
+        $conn->set_charset("utf8mb4");
 
         logDebug("✅ Database connected");
 

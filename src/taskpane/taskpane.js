@@ -629,7 +629,20 @@ function parseWeirdApiResponse(raw) {
 
   if (!events) return { ok:false, error:"❌ Aucun évènement trouvé", json:n3 };
 
-  return { ok: true, count: events.length, events };
+  // Fix UTF-8 encoding for all event names
+  const fixedEvents = events.map(evt => {
+    const originalLib = evt.lib || "";
+    const fixedLib = fixUTF8Encoding(originalLib);
+    if (originalLib !== fixedLib) {
+      debugLog(`🔤 Fixed encoding: "${originalLib}" → "${fixedLib}"`);
+    }
+    return {
+      ...evt,
+      lib: fixedLib
+    };
+  });
+
+  return { ok: true, count: fixedEvents.length, events: fixedEvents };
 }
 
 
@@ -637,6 +650,28 @@ function debugLog(msg){
   const box = document.getElementById("debug");
   // box.style.display = "block";
   box.innerText += "\n" + msg;
+}
+
+/* Fix double-encoded UTF-8 strings (e.g., "Ã©vÃ©nement" -> "événement") */
+function fixUTF8Encoding(str) {
+  if (typeof str !== 'string') return str;
+  try {
+    // Attempt to fix double-encoded UTF-8
+    // Convert string to bytes and decode as UTF-8
+    const bytes = [];
+    for (let i = 0; i < str.length; i++) {
+      bytes.push(str.charCodeAt(i));
+    }
+    return new TextDecoder('utf-8').decode(new Uint8Array(bytes));
+  } catch (e) {
+    // Fallback: use escape/decodeURIComponent method
+    try {
+      return decodeURIComponent(escape(str));
+    } catch (e2) {
+      // If all else fails, return original string
+      return str;
+    }
+  }
 }
 
 /* ======================

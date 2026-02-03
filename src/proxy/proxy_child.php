@@ -1,9 +1,12 @@
 <?php
 // proxy_child.php - REST API for fetching linked events
 
-header("Content-Type: application/json");
+header("Content-Type: application/json; charset=utf-8");
 header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Headers: Content-Type");
+
+// Set default charset for all string operations
+ini_set('default_charset', 'utf-8');
 
 error_reporting(E_ALL);
 ini_set('display_errors', 0);
@@ -116,6 +119,9 @@ try {
     if ($conn->connect_error) {
         throw new Exception("Database connection failed: " . $conn->connect_error);
     }
+
+    // Set charset to utf8mb4 for proper character encoding
+    $conn->set_charset("utf8mb4");
 
     // Fetch credentials from database
     $stmt = $conn->prepare("SELECT domain, user, password, env, auth_api, action_api FROM `auth-add-in` LIMIT 1");
