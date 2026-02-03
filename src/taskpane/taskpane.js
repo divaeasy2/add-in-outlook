@@ -655,22 +655,37 @@ function debugLog(msg){
 /* Fix double-encoded UTF-8 strings (e.g., "Ã©vÃ©nement" -> "événement") */
 function fixUTF8Encoding(str) {
   if (typeof str !== 'string') return str;
+  
+  // Only try to fix if string shows signs of double-encoding
+  // Double-encoded UTF-8 shows patterns like Ã© (for é), Ã¨ (for è), etc.
+  // These are Latin1 byte sequences that represent UTF-8 bytes
+  const doubleEncodedPattern = /[\xC3][\x89\xA9\xA8\xAA\xAE\xA0-\xBF]/g;
+  
+  if (!doubleEncodedPattern.test(str)) {
+    // String doesn't show signs of double-encoding, return as-is
+    return str;
+  }
+  
   try {
-    // Attempt to fix double-encoded UTF-8
+    // String appears double-encoded, attempt to fix it
     // Convert string to bytes and decode as UTF-8
     const bytes = [];
     for (let i = 0; i < str.length; i++) {
       bytes.push(str.charCodeAt(i));
     }
-    return new TextDecoder('utf-8').decode(new Uint8Array(bytes));
-  } catch (e) {
-    // Fallback: use escape/decodeURIComponent method
-    try {
-      return decodeURIComponent(escape(str));
-    } catch (e2) {
-      // If all else fails, return original string
+    
+    const fixed = new TextDecoder('utf-8').decode(new Uint8Array(bytes));
+    
+    // Verify the fix didn't introduce replacement characters
+    if (fixed.includes('\uFFFD')) {
+      // If replacement character present, this wasn't actually double-encoded
       return str;
     }
+    
+    return fixed;
+  } catch (e) {
+    // If decoding fails, return original string
+    return str;
   }
 }
 
