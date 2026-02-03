@@ -194,11 +194,10 @@ try {
     // Step 2: Build the linked events request body
     $utilizador = $data['evenement']['utilisateur'] ?? '';
     $tiers = $data['evenement']['tiers'] ?? '';
-    $realizeOkFilter = $data['evenement']['RealiseOk'] ?? 0;
+    $realizeOkValue = $data['evenement']['RealiseOk'] ?? 0;
     
-    // Determine the RealiseOk filter value
+    // Pass RealiseOk value directly to the API
     // 0 = available only, 1 = all events
-    $realizeOkValue = ($realizeOkFilter == 1) ? 'realiseOkFilter' : '';
 
     $linkedEventsPayload = [
         "action" => "WEB_SERVICE_INFINITY",

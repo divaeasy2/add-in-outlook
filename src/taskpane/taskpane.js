@@ -143,6 +143,29 @@ function updateProgress(percent, stepText) {
   }
 }
 
+/* Child Events Loading - Compact Spinner */
+function showChildLoading() {
+  const loadingState = document.getElementById("childLoadingState");
+  const contentState = document.getElementById("childContentState");
+  if (loadingState) {
+    loadingState.style.display = "flex";
+  }
+  if (contentState) {
+    contentState.classList.add("hidden");
+  }
+}
+
+function hideChildLoading() {
+  const loadingState = document.getElementById("childLoadingState");
+  const contentState = document.getElementById("childContentState");
+  if (loadingState) {
+    loadingState.style.display = "none";
+  }
+  if (contentState) {
+    contentState.classList.remove("hidden");
+  }
+}
+
 function showChildHint(msg = "") {
   const hint = document.getElementById("savHint");
   if (!hint) return;
@@ -642,6 +665,11 @@ async function loadChildEventsForSav() {
   if (!cachedPayload) return showStatus("⚠️ Aucun email prêt", "error");
 
   showStatus("⏳ Vérification des évènements ...", "info");
+  
+  // Show child popup with loading spinner
+  document.getElementById("childPopup").style.display = "block";
+  document.getElementById("savOptionsModal").style.display = "none";
+  showChildLoading();
 
   const payload = {
     evenement: {
@@ -651,13 +679,20 @@ async function loadChildEventsForSav() {
     }
   };
 
+  debugLog("📤 Sending RealiseOk=" + realiseOkFilter + " to API");
+  debugLog("📤 Full Payload: " + JSON.stringify(payload));
+
   const res = await fetch("https://addin-divalto.divy-si.fr/ASFLUID/outlook/proxy/proxy_child.php", {
     method: "POST",
     headers: { "Content-Type": "application/json; charset=UTF-8" },
     body: JSON.stringify(payload)
   }).then(r => r.text()).catch(() => null);
 
-  if (!res) return showStatus("❌ Erreur réseau", "error");
+  if (!res) {
+    hideChildLoading(); // Hide child loading animation
+    document.getElementById("childPopup").style.display = "none";
+    return showStatus("❌ Erreur réseau", "error");
+  }
 
   const parsed = parseWeirdApiResponse(res);
   const popup = document.getElementById("childPopup");
@@ -667,6 +702,7 @@ async function loadChildEventsForSav() {
   const showAllCheckbox = document.getElementById("showAllEventsCheckbox");
 
   if (!parsed.ok) {
+    hideChildLoading(); // Hide child loading animation
     popup.style.display = "none";
     return showStatus("🔴 " + parsed.error, "error");
   }
@@ -674,11 +710,6 @@ async function loadChildEventsForSav() {
   // Store events for filtering
   allEvents = parsed.events;
 
-  // Hide options modal and show child events popup
-  document.getElementById("savOptionsModal").style.display = "none";
-  popup.style.display = "block";
-  disablePrimaryButtons();
-  
   // Reset checkbox state
   showAllCheckbox.checked = realiseOkFilter === 1;
   
@@ -703,6 +734,9 @@ async function loadChildEventsForSav() {
   } else {
     searchInput.style.display = "none";
   }
+  
+  hideChildLoading(); // Hide child loading animation and show content
+  disablePrimaryButtons();
   
   const filterStatus = realiseOkFilter === 1 ? "tous les évènements" : "évènements disponibles";
   showStatus(`🟢 ${parsed.count} ${filterStatus} récupérés`, "success");

@@ -77,33 +77,42 @@
         <span id="evtCount">0 évènements trouvés</span>
       </div>
       
-      <div class="popup-filter-section">
-        <input 
-          type="text" 
-          id="eventSearchInput" 
-          placeholder="Rechercher par code ou nom..." 
-          class="event-search-input"
-          style="display:none;"
-        />
-        
-        <label class="checkbox-container">
-          <input 
-            type="checkbox" 
-            id="showAllEventsCheckbox"
-            class="show-all-checkbox"
-          />
-          <span class="checkbox-label">Afficher tous les évènements</span>
-        </label>
+      <!-- Loading State for Child Events -->
+      <div id="childLoadingState" class="child-loading-container" style="display:none;">
+        <div class="child-spinner"></div>
+        <p class="child-loading-text">Chargement des événements...</p>
       </div>
 
-      <select id="childSelect" class="event-select"></select>
-      <div class="btnPopup">
-        <button id="confirmEvt" class="action-btn primary" style="margin-top:10px;">
-          ✅ Confirmer
-        </button>
-        <button id="AnnuleEvt" class="action-btn secondary" style="margin-top:10px;">
-          ↩️ Retour
-        </button>
+      <!-- Content State for Child Events -->
+      <div id="childContentState" class="child-content-container">
+        <div class="popup-filter-section">
+          <input 
+            type="text" 
+            id="eventSearchInput" 
+            placeholder="Rechercher par code ou nom..." 
+            class="event-search-input"
+            style="display:none;"
+          />
+          
+          <label class="checkbox-container">
+            <input 
+              type="checkbox" 
+              id="showAllEventsCheckbox"
+              class="show-all-checkbox"
+            />
+            <span class="checkbox-label">Afficher tous les évènements</span>
+          </label>
+        </div>
+
+        <select id="childSelect" class="event-select"></select>
+        <div class="btnPopup">
+          <button id="confirmEvt" class="action-btn primary" style="margin-top:10px;">
+            ✅ Confirmer
+          </button>
+          <button id="AnnuleEvt" class="action-btn secondary" style="margin-top:10px;">
+            ↩️ Retour
+          </button>
+        </div>
       </div>
     </div>
 
@@ -142,7 +151,7 @@
     <!-- <div id="pj" ></div> -->
     <div id="debug" style="
     background:#111;
-    color:#0f0;
+    color:rgb(11, 188, 2);
     padding:10px;
     margin-top:20px;
     height:200px;

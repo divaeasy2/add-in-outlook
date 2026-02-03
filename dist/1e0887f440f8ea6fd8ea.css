@@ -764,3 +764,42 @@ header.ms-welcome__header h1 {
   background: linear-gradient(180deg, rgba(0, 255, 0, 0.9), rgba(0, 255, 0, 0.7));
   box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.4), 0 0 12px rgba(0, 255, 0, 0.4);
 }
+
+/* CHILD EVENTS LOADING ANIMATION - Compact Spinner */
+.child-loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 40px 20px;
+  min-height: 200px;
+}
+
+.child-spinner {
+  width: 42px;
+  height: 42px;
+  border: 2.5px solid rgba(246, 168, 0, 0.15);
+  border-top: 2.5px solid var(--divalto-orange);
+  border-right: 2.5px solid rgba(246, 168, 0, 0.3);
+  border-radius: 50%;
+  animation: spin 1.2s linear infinite;
+  flex-shrink: 0;
+}
+
+.child-loading-text {
+  font-size: 13px;
+  color: var(--divalto-dark);
+  font-weight: 500;
+  margin: 0;
+  letter-spacing: 0.3px;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.child-content-container {
+  /* No special display - let children flow naturally */
+}
+
+.child-content-container.hidden {
+  display: none;
+}
