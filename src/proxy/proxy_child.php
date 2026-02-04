@@ -12,64 +12,113 @@ error_reporting(E_ALL);
 ini_set('display_errors', 0);
 
 // Log file for debugging
-$logFile = __DIR__ . '/proxy_debug.log';
+$logFile = __DIR__ . '/proxy_child_debug.log';
 
 function logDebug($message) {
     global $logFile;
-    $timestamp = date('Y-m-d H:i:s');
-    file_put_contents($logFile, "[$timestamp] $message\n", FILE_APPEND);
+    try {
+        $timestamp = date('Y-m-d H:i:s');
+        $logMessage = "[$timestamp] $message\n";
+        
+        // Ensure directory exists
+        if (!is_dir(dirname($logFile))) {
+            @mkdir(dirname($logFile), 0777, true);
+        }
+        
+        // Write to log file
+        $bytes = @file_put_contents($logFile, $logMessage, FILE_APPEND | LOCK_EX);
+        if ($bytes === false) {
+            error_log("Failed to write to $logFile");
+        }
+    } catch (Exception $e) {
+        error_log("LogDebug exception: " . $e->getMessage());
+    }
 }
 
+logDebug("\n\n" . str_repeat("=", 150));
+logDebug("🚀 PROXY_CHILD.PHP INITIALIZED - " . date('Y-m-d H:i:s'));
+logDebug(str_repeat("=", 150));
+
 function decryptPassword($encryptedPassword) {
-    $encryptionKeyString = getenv('ENCRYPTION_KEY') ?: 'divalto2025';
+    logDebug("\n════════════════════════════════════════════════════════════════════════════════════════════");
+    logDebug("🔍 DECRYPTION PROCESS STARTED");
+    logDebug("════════════════════════════════════════════════════════════════════════════════════════════");
+    logDebug("   Encrypted Password (Base64): " . substr($encryptedPassword, 0, 50) . "...");
     
-    $encryptionKey = substr(str_pad($encryptionKeyString, 32, '!'), 0, 32);
-    
-    // Decode from base64
-    $decodedPassword = base64_decode($encryptedPassword, true);
-    if ($decodedPassword === false) {
-        throw new Exception("Failed to decode encrypted password");
+    try {
+        // Standard AES-256-CBC with documented key derivation
+        // Key: 'divalto2025' padded to 32 bytes with null bytes
+        // IV: 16 zero bytes (deterministic)
+        
+        $key = 'divalto2025';
+        $key_padded = str_pad($key, 32, "\0");
+        $iv = str_repeat("\0", 16);
+        
+        logDebug("   Key Derivation: Raw key padded to 32 bytes");
+        logDebug("      Key: '$key'");
+        logDebug("      Key (padded hex): " . bin2hex($key_padded));
+        logDebug("      IV (hex): " . bin2hex($iv));
+        
+        // Decrypt with automatic PKCS7 padding
+        logDebug("   Decryption Method: AES-256-CBC with PKCS7 padding");
+        $decrypted = openssl_decrypt(
+            $encryptedPassword,
+            'aes-256-cbc',
+            $key_padded,
+            0,  // 0 = with automatic PKCS7 padding
+            $iv
+        );
+        
+        if ($decrypted === false) {
+            logDebug("   ❌ DECRYPTION FAILED: " . openssl_error_string());
+            logDebug("════════════════════════════════════════════════════════════════════════════════════════════\n");
+            throw new Exception("Decryption failed: " . openssl_error_string());
+        }
+        
+        $decryptedTrimmed = trim($decrypted);
+        logDebug("   ✅ DECRYPTION SUCCESSFUL");
+        logDebug("      Password length: " . strlen($decryptedTrimmed) . " characters");
+        logDebug("      Password preview: " . substr($decryptedTrimmed, 0, 10) . "***");
+        logDebug("════════════════════════════════════════════════════════════════════════════════════════════\n");
+        
+        return $decryptedTrimmed;
+        
+    } catch (Exception $e) {
+        logDebug("   ❌ Exception: " . $e->getMessage());
+        logDebug("════════════════════════════════════════════════════════════════════════════════════════════\n");
+        throw $e;
     }
-    
-    // Extract IV (first 16 bytes) and encrypted data
-    if (strlen($decodedPassword) < 16) {
-        throw new Exception("Invalid encrypted password format");
-    }
-    
-    $iv = substr($decodedPassword, 0, 16);
-    $encrypted = substr($decodedPassword, 16);
-    
-    // Decrypt
-    $decrypted = openssl_decrypt($encrypted, 'AES-256-CBC', $encryptionKey, OPENSSL_RAW_DATA, $iv);
-    
-    if ($decrypted === false) {
-        throw new Exception("Failed to decrypt password: " . openssl_error_string());
-    }
-    
-    return trim($decrypted);
 }
 
 if ($_SERVER["REQUEST_METHOD"] !== "POST") {
+    logDebug("❌ Invalid request method: " . $_SERVER["REQUEST_METHOD"]);
     http_response_code(405);
     echo json_encode(["error"=>"Method not allowed"]);
     exit;
 }
 
 $input = file_get_contents("php://input");
+logDebug("📨 REQUEST RECEIVED - Method: " . $_SERVER["REQUEST_METHOD"] . ", Content-Type: " . ($_SERVER['CONTENT_TYPE'] ?? 'N/A'));
+
 if (!$input) {
+    logDebug("⚠️  Empty request body received");
     http_response_code(400);
     echo json_encode(["error"=>"Empty body"]);
     exit;
 }
 
-logDebug("📨 Incoming request: " . substr($input, 0, 200));
+logDebug("📨 Incoming request payload:");
+logDebug("   " . substr($input, 0, 300) . (strlen($input) > 300 ? "..." : ""));
 
 try {
     $data = json_decode($input, true);
     
     if ($data === null) {
+        logDebug("❌ JSON decode failed: " . json_last_error_msg());
         throw new Exception("Invalid JSON payload");
     }
+    
+    logDebug("✅ JSON decoded successfully");
 
     // Load environment variables from .env file
     $envPaths = [
@@ -138,8 +187,25 @@ try {
 
     $row = $result->fetch_assoc();
     
+    logDebug("� DATABASE VALUES RETRIEVED:");
+    logDebug("   Domain: " . $row['domain']);
+    logDebug("   User: " . $row['user']);
+    logDebug("   Encrypted Password (from DB): " . substr($row['password'], 0, 50) . "...");
+    logDebug("   Encrypted Password Full: " . $row['password']);
+    logDebug("   Env: " . $row['env']);
+    logDebug("   Auth API: " . $row['auth_api']);
+    logDebug("   Action API: " . $row['action_api']);
+    logDebug("");
+    
+    logDebug("�🔐 Attempting to decrypt password from database...");
     // Decrypt the password from database
-    $decryptedPassword = decryptPassword($row['password']);
+    try {
+        $decryptedPassword = decryptPassword($row['password']);
+        logDebug("✅ Password decrypted successfully");
+    } catch (Exception $e) {
+        logDebug("❌ Decryption failed: " . $e->getMessage());
+        throw $e;
+    }
     
     // Get API URLs from database, fallback to .env or defaults
     $authUrl = $row['auth_api'] ?: (getenv('AUTH_API'));;
